@@ -24,7 +24,7 @@ Do NOT upload `.env` or `node_modules` (`.gitignore` already skips them).
 | ADMIN_NAME | your name |
 | ALLOW_REGISTRATION | false |
 
-Changing `ADMIN_PASSWORD` later and redeploying resets the admin password.
+Changing `ADMIN_PASSWORD` in Render resets the admin password. Unchanged bootstrap settings do not override later profile changes.
 
 ## 4. Deploy, then open the https://....onrender.com link and sign in.
 Staff accounts: set `ALLOW_REGISTRATION=true` briefly, let staff register, then set it back to `false`.
@@ -47,3 +47,28 @@ Storage is PostgreSQL only. If you have legacy data from an older JSON export, r
 5. If your local database connection needs `DATABASE_SSL=no-verify`, configure the same setting in Render only when necessary.
 
 The Blueprint selects the free web service plan. See https://render.com/docs/free for current limitations. No new database is created.
+
+## Google sign-in and authentication setup
+
+This site uses server-side Google OpenID Connect with PKCE, one-use state, a nonce, and signed ID-token verification. Google tokens never go to browser storage. App sessions use HttpOnly cookies, Secure in production, and only hashed session tokens are stored in PostgreSQL.
+
+1. In Google Cloud / Google Auth Platform, configure branding and audience, then create an OAuth client with application type **Web application**. Request only `openid`, `email`, and `profile`.
+2. For the current live site, register this exact authorized redirect URI:
+   `https://nestledger-b41v.onrender.com/api/auth/google/callback`
+   For local development, optionally add `http://localhost:3000/api/auth/google/callback`.
+3. Add these in **Render > Environment**:
+   - `APP_URL=https://nestledger-b41v.onrender.com`
+   - `GOOGLE_CLIENT_ID=<web application client ID>`
+   - `GOOGLE_CLIENT_SECRET=<client secret>`
+   - `ALLOW_REGISTRATION=true` if new users should be able to sign up. The existing default is false. Registration creates staff accounts with access to this shared farm, not separate private farms.
+4. If the Google app is in Testing, add the intended Google accounts as test users. Before general use, configure the appropriate production audience in Google.
+5. Push the changes and deploy the latest commit. Google buttons remain disabled until all three Google settings are configured. Keep the client secret in Render, never in GitHub or the client bundle.
+6. For an existing password account, sign in first and choose **My Account > Connect Google account** with the same email. A verified Google email alone never takes over an existing password account.
+
+Verification: `pnpm test:auth` tests local signup, login, logout, sessions, duplicates, profile changes, and Google redirects/callbacks with cryptographically signed test identity tokens. It uses the configured database, creates temporary records inside a rolled-back transaction, and applies additive schema migrations. Real Google consent and Render redirects still require a manual live check after credentials are configured.
+
+Live acceptance check: sign up with a permitted email, sign out, sign in with a password, connect matching Google, sign out again and Continue with Google. Test a new Google account, cancellation, duplicates, incorrect passwords, and logout.
+
+References:
+- https://developers.google.com/identity/protocols/oauth2/web-server
+- https://developers.google.com/identity/openid-connect/reference

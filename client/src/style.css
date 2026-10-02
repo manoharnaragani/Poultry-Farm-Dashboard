@@ -51,3 +51,7 @@ body{background:var(--bg)}.sidebar{background:var(--sidebar)}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 
 .shed-card:last-child{grid-column:auto}.shed-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.dashboard-tabs{width:100%;overflow-x:auto}.dashboard-tab{flex-shrink:0}
+
+.google-signin{display:flex;width:100%;margin-bottom:18px;border-color:var(--line-strong);text-align:center}.google-signin[aria-disabled="true"]{opacity:.55;cursor:not-allowed}.btn:disabled{opacity:.55;cursor:wait}
+
+.date-shortcuts{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}.report-filters{margin-bottom:20px}.report-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.report-section{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--panel-2)}.report-section b{font-size:13px}.report-section .feature-note{margin-top:5px}@media(max-width:680px){.report-sections{grid-template-columns:1fr}.report-section{flex-wrap:wrap}}

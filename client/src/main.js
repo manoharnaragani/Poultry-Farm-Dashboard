@@ -1,3 +1,4 @@
+import { datePreset, makeCsv, exportColumns, reportRows, reportColumns, downloadCsv } from './exports.js';
 import './theme.js';
 import { getLanguage, setLanguage, translateUI, watchTranslations } from './i18n.js';
 import './style.css';
@@ -8,7 +9,7 @@ import { today, dateOffset, createEmptyData } from './data.js';
 import { apiRoot, clearRemoteData, clearDemoStorage, getLocalData, isRemoteConnected, loadRemoteSettings, loadResource, persistLocal, saveRemoteSettings, saveResource, tryRemoteDelete } from './api.js';
 
 const state = getLocalData();
-const ui = { view: 'dashboard', search: '', filter: 'all', dateFrom: '', dateTo: '', page: 1, sort: '', direction: 1, range: 7, mobileOpen: false, notifications: false, session: null, apiHealth: null };
+const ui = { view: 'dashboard', search: '', filter: 'all', reportShed: 'all', dateFrom: '', dateTo: '', page: 1, sort: '', direction: 1, range: 7, mobileOpen: false, notifications: false, session: null, apiHealth: null, authConfig: { registrationEnabled: false, googleEnabled: false } };
 const pageSize = 8;
 const shedOptions = () => state.sheds.map((shed) => shed.name);
 const categories = ['Labour', 'Feed', 'Medicines', 'Transport', 'Electricity', 'Water', 'Repairs', 'Cleaning', 'Fuel', 'Supplies', 'Other'];
@@ -107,7 +108,7 @@ const navGroups = [
   { label: 'Production & sales', links: [{ id: 'eggs', label: 'Egg production', icon: 'egg' }, { id: 'mortality', label: 'Mortality', icon: 'pulse' }, { id: 'sales', label: 'Tray sales', icon: 'basket' }, { id: 'sheds', label: 'Shed overview', icon: 'building' }] },
   { label: 'Feed management', links: [{ id: 'feedStock', label: 'Feed stock', icon: 'package' }, { id: 'feedUsage', label: 'Daily usage', icon: 'leaf' }, { id: 'feedPurchases', label: 'Purchases', icon: 'basket' }] },
   { label: 'People', links: [{ id: 'workers', label: 'Workers', icon: 'users' }, { id: 'attendance', label: 'Attendance', icon: 'calendar' }, { id: 'assignments', label: 'Assignment history', icon: 'building' }] },
-  { label: 'Finance & farm', links: [{ id: 'expenses', label: 'Daily expenses', icon: 'receipt' }, { id: 'payments', label: 'Worker payments', icon: 'wallet' }, { id: 'dailyWages', label: 'Daily wages', icon: 'receipt' }, { id: 'settings', label: 'Settings', icon: 'settings' }, { id: 'account', label: 'My Account', icon: 'users' }] },
+  { label: 'Finance & farm', links: [{ id: 'reports', label: 'Reports', icon: 'receipt' }, { id: 'expenses', label: 'Daily expenses', icon: 'receipt' }, { id: 'payments', label: 'Worker payments', icon: 'wallet' }, { id: 'dailyWages', label: 'Daily wages', icon: 'receipt' }, { id: 'settings', label: 'Settings', icon: 'settings' }, { id: 'account', label: 'My Account', icon: 'users' }] },
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -123,7 +124,6 @@ function greeting() {
 }
 function requestHeaders() {
   const headers = { Accept: 'application/json' };
-  try { const token = sessionStorage.getItem('nestledger.apiToken'); if (token) headers.Authorization = `Bearer ${token}`; } catch {}
   return headers;
 }
 async function refreshSession() {
@@ -208,7 +208,7 @@ function farmNotifications() {
   return items;
 }
 function renderTopbar() {
-  const title = ui.view.startsWith('dashboard-shed-') ? `${state.sheds.find((shed) => String(shed.id) === ui.view.split('-').pop())?.name || 'Shed'} dashboard` : ui.view === 'dashboard' ? 'Overall dashboard' : ui.view === 'settings' ? 'Farm settings' : ui.view === 'account' ? 'My Account' : modules[ui.view]?.title || 'Farm overview';
+  const title = ui.view === 'reports' ? 'Reports' : ui.view.startsWith('dashboard-shed-') ? `${state.sheds.find((shed) => String(shed.id) === ui.view.split('-').pop())?.name || 'Shed'} dashboard` : ui.view === 'dashboard' ? 'Overall dashboard' : ui.view === 'settings' ? 'Farm settings' : ui.view === 'account' ? 'My Account' : modules[ui.view]?.title || 'Farm overview';
 
   const notices = farmNotifications();
   return `<header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" data-action="toggle-menu" aria-label="Open navigation">${icon('menu', 18)}</button><div class="top-title">${esc(title)}</div><div class="top-date">${prettyDate(today, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div></div><div class="topbar-actions"><select id="languageSwitch" class="language-switch" aria-label="Language" data-no-translate><option value="en" ${getLanguage() === 'en' ? 'selected' : ''}>English</option><option value="te" ${getLanguage() === 'te' ? 'selected' : ''}>&#3108;&#3142;&#3122;&#3137;&#3095;&#3137;</option></select><label class="search-box" style="max-width:210px;min-width:160px;height:32px"><span>${icon('search', 14)}</span><input id="globalSearch" type="search" placeholder="Search this page…" value="${esc(ui.search)}" aria-label="Search this page"></label><button class="icon-button" data-action="notifications" aria-label="Notifications">${icon('bell', 16)}${notices.length ? '<span class="notification-dot"></span>' : ''}</button><div class="top-divider"></div><div class="profile top-profile"><div class="avatar">${esc(accountInitials())}</div><div><div class="profile-name">${esc(accountName())}</div><div class="profile-role">${ui.session ? `${esc(ui.session.role)} account` : 'Signed out'}</div></div><button class="btn btn-quiet" style="height:32px;padding:0 9px" data-action="${ui.session ? 'sign-out' : 'sign-in'}">${ui.session ? 'Sign out' : 'Sign in'}</button></div></div>${ui.notifications ? `<div class="notice-popover"><div class="notice-head">Farm alerts</div>${notices.length ? notices.map((item) => `<div class="notice-line">${esc(item.title)}<span>${esc(item.description)}</span></div>`).join('') : '<div class="notice-line">No urgent reminders<span>All key records look current.</span></div>'}</div>` : ''}</header>`;
@@ -447,6 +447,21 @@ function filterRows(def, rows) {
   if (!ui.sort) result.reverse();
   return result;
 }
+function dateShortcuts() {
+  return `<div class="date-shortcuts" role="group" aria-label="Date shortcuts">${[['today','Today'],['yesterday','Yesterday'],['week','Last 7 days'],['month','Last 30 days'],['previous-month','Previous month']].map(([preset,label])=>`<button class="btn btn-small" data-action="date-preset" data-preset="${preset}">${esc(label)}</button>`).join('')}</div>`;
+}
+const reportKeys = ['eggs','mortality','feedUsage','feedPurchases','sales','expenses','attendance','payments','dailyWages','assignments'];
+function currentReportRows() { const rows=reportRows(state,modules,reportKeys,ui.dateFrom,ui.dateTo,ui.reportShed); const query=ui.search.trim().toLowerCase(); return query ? rows.filter((row)=>Object.values(row).some((value)=>String(value ?? '').toLowerCase().includes(query))) : rows; }
+function renderReports() {
+  if (!ui.session) return `${pageHeading('Reports','Sign in to view and export your farm history.')}<button class="btn btn-primary" data-action="sign-in">Sign in</button>`;
+  const rows=currentReportRows();
+  const count=(key)=>rows.filter((row)=>row.reportSection===modules[key].title);
+  return `${connectionBanner()}${pageHeading('Reports','Download saved farm records for a day, week, month, or custom period.',`<button class="btn btn-primary" data-action="export-report" ${!rows.length || !isRemoteConnected() ? 'disabled' : ''}>Export farm report</button>`)}
+    <section class="panel report-filters"><div class="module-toolbar"><label class="date-filter">From date<input id="dateFrom" type="date" value="${esc(ui.dateFrom)}" ${ui.dateTo ? `max="${esc(ui.dateTo)}"` : ''}></label><label class="date-filter">To date<input id="dateTo" type="date" value="${esc(ui.dateTo)}" ${ui.dateFrom ? `min="${esc(ui.dateFrom)}"` : ''}></label><label class="date-filter">Shed<select class="filter-select" id="reportShed"><option value="all">All sheds</option>${state.sheds.map((shed)=>`<option value="${esc(shed.name)}" ${ui.reportShed===shed.name ? 'selected' : ''}>${esc(shed.name)}</option>`).join('')}</select></label><button class="btn btn-small" data-action="clear-dates">Clear dates</button></div>${dateShortcuts()}<div class="feature-note">Last 7 days and Last 30 days include today. Previous month is the complete previous calendar month.</div><div class="feature-note">Shed reports include records explicitly assigned to that shed. Shared sales, feed purchases, and worker records without a recorded shed appear only in the overall farm report.</div></section>
+    <div class="summary-grid">${[['Matching records',num(rows.length)],['Total eggs',num(sum(count('eggs'),'totalEggs'))],['Sales amount',money(sum(count('sales'),'totalAmount'))],['Total expenses',money(sum(count('expenses'),'amount'))]].map(([label,value])=>`<div class="summary-tile"><div class="summary-label">${esc(label)}</div><div class="summary-value">${value}</div><div class="summary-note">Selected records</div></div>`).join('')}</div>
+    <section class="panel"><div class="panel-head"><div><div class="panel-title">Export sections</div><div class="panel-sub">Download all sections together or choose a section below.</div></div></div><div class="report-sections">${reportKeys.map((key)=>{const selected=count(key);return `<div class="report-section"><div><b>${esc(modules[key].title)}</b><div class="feature-note">${selected.length} records</div></div><button class="btn btn-small" data-action="export-report-section" data-key="${key}" ${!selected.length || !isRemoteConnected() ? 'disabled' : ''}>Export CSV</button></div>`;}).join('')}</div>${!rows.length ? '<div class="callout">No records found for this period and shed.</div>' : ''}<div class="feature-note">CSV files open in Excel. Dates, IDs, names, and recorded amounts are exported without changing your saved data.</div></section>`;
+}
+
 function renderTable(def, rows) {
   const filtered = filterRows(def, rows);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -457,8 +472,8 @@ function renderTable(def, rows) {
   const dateLabel = def.columns.find((column) => column.key === dateField)?.label;
   const dateControls = dateField ? `<div class="date-filters" role="group" aria-label="Filter by ${esc(dateLabel)}"><label class="date-filter">From date<input id="dateFrom" type="date" value="${esc(ui.dateFrom)}" ${ui.dateTo ? `max="${esc(ui.dateTo)}"` : ''}></label><label class="date-filter">To date<input id="dateTo" type="date" value="${esc(ui.dateTo)}" ${ui.dateFrom ? `min="${esc(ui.dateFrom)}"` : ''}></label>${ui.dateFrom || ui.dateTo ? '<button class="btn btn-small" data-action="clear-dates">Clear dates</button>' : ''}<span class="date-filter-hint">${esc(dateLabel)}${ui.dateFrom || ui.dateTo ? '' : ' - All dates'}</span></div>` : '';
   const actions = (row) => `<div class="row-actions"><button class="table-action" data-action="view-row" data-id="${esc(row.id)}" title="View details" aria-label="View details">${icon('eye', 13)}</button><button class="table-action" data-action="edit-row" data-id="${esc(row.id)}" title="Edit" aria-label="Edit">${icon('edit', 13)}</button>${def.key === 'workers' ? `<button class="table-action" data-action="worker-attendance" data-id="${esc(row.id)}" title="Attendance">${icon('calendar', 13)}</button><button class="table-action" data-action="worker-payment" data-id="${esc(row.id)}" title="Payments">${icon('wallet', 13)}</button>` : ''}${['assignments'].includes(def.key) ? '' : `<button class="table-action danger" data-action="delete-row" data-id="${esc(row.id)}" title="Delete" aria-label="Delete">${icon('trash', 13)}</button>`}</div>`;
-  return `<div class="module-toolbar"><label class="search-box">${icon('search', 14)}<input id="moduleSearch" type="search" placeholder="Search ${esc(def.title.toLowerCase())}…" value="${esc(ui.search)}" aria-label="Search ${esc(def.title)}"></label>${filterOptions.length ? `<select class="filter-select" id="moduleFilter" aria-label="Filter by ${esc(def.filterField)}"><option value="all">${esc(def.filterLabel || 'All')}</option>${filterOptions.map((option) => `<option value="${esc(option)}" ${ui.filter === option ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>` : ''}${dateControls}<div class="results-label">${filtered.length} record${filtered.length === 1 ? '' : 's'}</div></div>
-    <div class="module-card"><div class="table-wrap"><table class="data-table"><thead><tr>${def.columns.map((column) => `<th><span class="th-sort" data-action="sort" data-key="${esc(column.key)}">${esc(column.label)}${ui.sort === column.key ? (ui.direction > 0 ? ' ↑' : ' ↓') : ''}</span></th>`).join('')}<th>Actions</th></tr></thead><tbody>${pageRows.length ? pageRows.map((row) => `<tr>${def.columns.map((column) => `<td>${formatCell(column, row)}</td>`).join('')}<td>${actions(row)}</td></tr>`).join('') : `<tr><td colspan="${def.columns.length + 1}" class="table-empty">No records match this search. Try a different filter or add a new record.</td></tr>`}</tbody></table></div><div class="pagination"><span>Showing ${filtered.length ? (ui.page - 1) * pageSize + 1 : 0}–${Math.min(ui.page * pageSize, filtered.length)} of ${filtered.length}</span><div class="page-actions"><button class="page-btn" data-action="page" data-step="-1" ${ui.page <= 1 ? 'disabled' : ''} aria-label="Previous page">‹</button><span class="page-btn" style="display:grid;place-items:center;color:var(--green)">${ui.page}</span><button class="page-btn" data-action="page" data-step="1" ${ui.page >= totalPages ? 'disabled' : ''} aria-label="Next page">›</button></div></div></div>`;
+  return `<div class="module-toolbar"><label class="search-box">${icon('search', 14)}<input id="moduleSearch" type="search" placeholder="Search ${esc(def.title.toLowerCase())}…" value="${esc(ui.search)}" aria-label="Search ${esc(def.title)}"></label>${filterOptions.length ? `<select class="filter-select" id="moduleFilter" aria-label="Filter by ${esc(def.filterField)}"><option value="all">${esc(def.filterLabel || 'All')}</option>${filterOptions.map((option) => `<option value="${esc(option)}" ${ui.filter === option ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>` : ''}${dateControls}<button class="btn" data-action="export-csv" ${!filtered.length || !ui.session || !isRemoteConnected() ? 'disabled' : ''}>Export CSV</button><div class="results-label">${filtered.length} record${filtered.length === 1 ? '' : 's'}</div></div>
+    ${dateField ? dateShortcuts() : ''}<div class="module-card"><div class="table-wrap"><table class="data-table"><thead><tr>${def.columns.map((column) => `<th><span class="th-sort" data-action="sort" data-key="${esc(column.key)}">${esc(column.label)}${ui.sort === column.key ? (ui.direction > 0 ? ' ↑' : ' ↓') : ''}</span></th>`).join('')}<th>Actions</th></tr></thead><tbody>${pageRows.length ? pageRows.map((row) => `<tr>${def.columns.map((column) => `<td>${formatCell(column, row)}</td>`).join('')}<td>${actions(row)}</td></tr>`).join('') : `<tr><td colspan="${def.columns.length + 1}" class="table-empty">No records match this search. Try a different filter or add a new record.</td></tr>`}</tbody></table></div><div class="pagination"><span>Showing ${filtered.length ? (ui.page - 1) * pageSize + 1 : 0}–${Math.min(ui.page * pageSize, filtered.length)} of ${filtered.length}</span><div class="page-actions"><button class="page-btn" data-action="page" data-step="-1" ${ui.page <= 1 ? 'disabled' : ''} aria-label="Previous page">‹</button><span class="page-btn" style="display:grid;place-items:center;color:var(--green)">${ui.page}</span><button class="page-btn" data-action="page" data-step="1" ${ui.page >= totalPages ? 'disabled' : ''} aria-label="Next page">›</button></div></div></div>`;
 }
 function renderModule() {
   const def = modules[ui.view];
@@ -471,6 +486,7 @@ function renderAccount() {
     return `${connectionBanner()}${pageHeading('My Account', 'Sign in to manage your account.')}<div class="settings-grid"><section class="settings-card"><h3>Not signed in</h3><p>You need to sign in before you can change your account details.</p><button class="btn btn-primary" data-action="sign-in">Sign in</button></section></div>`;
   }
   return `${connectionBanner()}${pageHeading('My Account', 'Update your name, email address, and password.')}
+    ${ui.authConfig.googleEnabled ? `<div class="callout">${ui.session.googleLinked ? 'Your account is connected to Google.' : '<a class="btn google-signin" href="/api/auth/google?mode=link">Connect Google account</a>'}</div>` : ''}
   <div class="settings-grid">
     <section class="settings-card">
       <h3>Account details</h3>
@@ -483,19 +499,20 @@ function renderAccount() {
         </div>
         <div class="form-field">
           <label for="acc-email">Email address <span style="font-weight:normal;color:var(--muted)">(required)</span></label>
-          <input id="acc-email" name="email" type="email" value="${esc(ui.session.email)}" required>
+          <input id="acc-email" name="email" type="email" value="${esc(ui.session.email)}" ${ui.session.googleLinked ? 'readonly' : ''} required>
           <span class="form-error" data-error="email"></span>
         </div>
+        ${ui.session.hasPassword ? `
         <hr style="border:none;border-top:1px solid var(--line);margin:18px 0">
         <p style="color:var(--muted);font-size:0.88rem;margin:0 0 10px">Leave the password fields empty if you do not want to change your password.</p>
         <div class="form-field">
           <label for="acc-current-pw">Current password</label>
-          <input id="acc-current-pw" name="currentPassword" type="password" placeholder="Required only if changing password" autocomplete="current-password">
+          <input id="acc-current-pw" name="currentPassword" type="password" placeholder="Required to change email or password" autocomplete="current-password">
           <span class="form-error" data-error="currentPassword"></span>
         </div>
         <div class="form-field">
           <label for="acc-new-pw">New password</label>
-          <input id="acc-new-pw" name="newPassword" type="password" placeholder="Minimum 8 characters" autocomplete="new-password">
+          <input id="acc-new-pw" name="newPassword" type="password" placeholder="Minimum 12 characters" autocomplete="new-password">
           <span class="form-error" data-error="newPassword"></span>
         </div>
         <div class="form-field">
@@ -503,6 +520,7 @@ function renderAccount() {
           <input id="acc-confirm-pw" name="confirmPassword" type="password" placeholder="Repeat new password" autocomplete="new-password">
           <span class="form-error" data-error="confirmPassword"></span>
         </div>
+        ` : '<div class="callout">Your password is managed by Google. Use Continue with Google to sign in.</div>'}
         <div class="form-error" data-error="general"></div>
         <div class="settings-actions">
           <button class="btn btn-primary" type="submit">Save changes</button>
@@ -538,7 +556,7 @@ function renderSettings() {
 
 function render() {
   const app = $('#app');
-  const content = ui.view.startsWith('dashboard-shed-') ? renderShedDashboard(ui.view.split('-').pop()) : ui.view === 'dashboard' ? renderDashboard() : ui.view === 'settings' ? renderSettings() : ui.view === 'account' ? renderAccount() : modules[ui.view] ? renderModule() : renderDashboard();
+  const content = ui.view.startsWith('dashboard-shed-') ? renderShedDashboard(ui.view.split('-').pop()) : ui.view === 'dashboard' ? renderDashboard() : ui.view === 'reports' ? renderReports() : ui.view === 'settings' ? renderSettings() : ui.view === 'account' ? renderAccount() : modules[ui.view] ? renderModule() : renderDashboard();
 
   app.innerHTML = `<div class="layout">${renderSidebar()}<div class="workspace">${renderTopbar()}<main class="main">${ui.view.startsWith('dashboard') ? dashboardTabs() : ''}${content}</main></div></div>`;
 }
@@ -558,14 +576,17 @@ function openModal({ title, subtitle, fields, values = {}, onSubmit, detail = fa
     } else if (field.type === 'textarea') {
       input = `<textarea id="field-${field.key}" name="${field.key}" placeholder="${esc(field.placeholder || '')}">${esc(current)}</textarea>`;
     } else {
-      input = `<input id="field-${field.key}" name="${field.key}" type="${field.type || 'text'}" value="${esc(current)}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.step ? `step="${field.step}"` : ''} ${field.required ? 'required' : ''} ${field.placeholder ? `placeholder="${esc(field.placeholder)}"` : ''}>`;
+      input = `<input id="field-${field.key}" name="${field.key}" type="${field.type || 'text'}" ${field.key === 'email' ? 'autocomplete="username"' : field.type === 'password' ? `autocomplete="${field.autocomplete || 'current-password'}"` : ''} value="${esc(current)}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.step ? `step="${field.step}"` : ''} ${field.required ? 'required' : ''} ${field.placeholder ? `placeholder="${esc(field.placeholder)}"` : ''}>`;
     }
     return `<div class="form-field ${field.full ? 'full' : ''}"><label for="field-${field.key}">${esc(field.label)}${required}</label>${input}<span class="form-error" data-error="${field.key}"></span></div>`;
   }).join('')}</div><div class="form-error" data-error="general"></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancel</button><button class="btn btn-primary" type="submit">${esc(submitLabel)}</button></div></form>`;
   root.innerHTML = `<div class="modal-backdrop" data-action="backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><div class="modal-title" id="modalTitle">${esc(title)}</div><div class="modal-sub">${esc(subtitle || '')}</div></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Close dialog">${icon('close', 16)}</button></div><div class="modal-body">${body}</div></section></div>`;
   if (onSubmit) $('#recordForm', root)?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    try { await onSubmit(event.currentTarget); }
+    const form = event.currentTarget; const submit = form.querySelector('[type=submit]');
+    if (submit?.disabled) return;
+    if (submit) submit.disabled = true;
+    try { await onSubmit(form); }
     catch (error) {
       if (error?.status === 401) {
         closeModal();
@@ -577,8 +598,8 @@ function openModal({ title, subtitle, fields, values = {}, onSubmit, detail = fa
       }
       const msg = error?.message || 'The record could not be saved.';
       showToast(msg, 'error');
-      setFormError(event.currentTarget, 'general', msg);
-    }
+      setFormError(form, 'general', msg);
+    } finally { if (submit) submit.disabled = false; }
   });
   $('.modal-backdrop', root)?.addEventListener('click', (event) => { if (event.target === event.currentTarget) closeModal(); });
   $('input,select,textarea', root)?.focus();
@@ -731,6 +752,7 @@ function openQuickEntry() {
   openModal({ title: 'Quick entry', subtitle: 'Choose a common daily record to add.', fields: [{ key: 'entryType', label: 'Record type', type: 'select', required: true, options: [{ value: 'eggs', label: 'Egg production' }, { value: 'mortality', label: 'Mortality' }, { value: 'sales', label: 'Tray sale' }, { value: 'expenses', label: 'Daily expense' }, { value: 'feedUsage', label: 'Feed usage' }, { value: 'attendance', label: 'Worker attendance' }] }], values: { entryType: 'eggs' }, submitLabel: 'Continue', onSubmit: async (form) => { const target = new FormData(form).get('entryType'); closeModal(); ui.view = target; ui.search = ''; ui.filter = 'all'; render(); await openRecordForm(modules[target]); } });
 }
 function openAuthModal(mode = 'login') {
+  if (mode === 'register' && !ui.authConfig.registrationEnabled) mode = 'login';
   let currentMode = mode;
   const renderAuth = () => {
     const isLogin = currentMode === 'login';
@@ -738,14 +760,15 @@ function openAuthModal(mode = 'login') {
       title: isLogin ? 'Sign in to NestLedger' : 'Create your farm account',
       subtitle: isLogin ? 'Sign in to access your shared PostgreSQL farm database.' : 'Create a staff account for this farm.',
       fields: isLogin
-        ? [text('email', 'Email', true), { key: 'password', label: 'Password', type: 'password', required: true }]
-        : [text('name', 'Full name'), text('email', 'Email'), { key: 'password', label: 'Password', type: 'password', required: true, placeholder: 'Minimum 8 characters' }],
+        ? [{ key: 'email', label: 'Email', type: 'email', required: true }, { key: 'password', label: 'Password', type: 'password', required: true }]
+        : [text('name', 'Full name'), text('email', 'Email'), { key: 'password', label: 'Password', type: 'password', autocomplete: 'new-password', required: true, placeholder: '12+ characters with a letter and a number or symbol' }],
       values: {},
       submitLabel: isLogin ? 'Sign in' : 'Create account',
       onSubmit: async (form) => {
         const values = Object.fromEntries(new FormData(form).entries());
         const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, credentials: 'same-origin', body: JSON.stringify(values) });
+        let response;
+        try { response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, credentials: 'same-origin', body: JSON.stringify(values) }); } catch { throw new Error('Unable to reach the sign-in server. Check your connection and try again.'); }
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.success !== true) throw new Error(payload.message || 'Authentication failed.');
         clearDemoStorage();
@@ -763,8 +786,20 @@ function openAuthModal(mode = 'login') {
       toggle.type = 'button';
       toggle.className = 'btn btn-quiet';
       toggle.textContent = isLogin ? 'Create account' : 'Back to sign in';
+      toggle.disabled = isLogin && !ui.authConfig.registrationEnabled;
       toggle.addEventListener('click', () => { currentMode = isLogin ? 'register' : 'login'; renderAuth(); });
       actions.insertBefore(toggle, actions.firstChild);
+      const google = document.createElement('a');
+      google.className = 'btn google-signin';
+      google.textContent = 'Continue with Google';
+      if (ui.authConfig.googleEnabled) google.href = '/api/auth/google';
+      else { google.setAttribute('aria-disabled', 'true'); google.title = 'Google sign-in is not configured yet.'; }
+      $('.modal-body', modalRoot)?.prepend(google);
+      if (!ui.authConfig.registrationEnabled) {
+        const note = document.createElement('p'); note.className = 'feature-note';
+        note.textContent = 'New accounts are disabled. Ask the farm administrator for access.';
+        $('.modal-body', modalRoot)?.append(note);
+      }
 
     }
   };
@@ -772,7 +807,7 @@ function openAuthModal(mode = 'login') {
 }
 
 function navigate(view) {
-  ui.view = view; ui.search = ''; ui.filter = 'all'; ui.dateFrom = ''; ui.dateTo = ''; ui.page = 1; ui.sort = ''; ui.notifications = false; ui.mobileOpen = false; render();
+  ui.view = view; ui.search = ''; ui.filter = 'all'; ui.reportShed = 'all'; ui.dateFrom = ''; ui.dateTo = ''; ui.page = 1; ui.sort = ''; ui.notifications = false; ui.mobileOpen = false; render();
 }
 
 const app = $('#app');
@@ -783,7 +818,7 @@ app.addEventListener('click', async (event) => {
   const action = target.dataset.action;
   if (action === 'sign-in') { return openAuthModal('login'); }
   if (action === 'sign-out') {
-    try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+    try { const response = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); if (!response.ok) throw new Error(); } catch { showToast('Could not sign out. Check your connection and try again.', 'error'); return; }
     try { sessionStorage.removeItem('nestledger.apiToken'); } catch {}
     ui.session = null; ui.apiHealth = null; clearRemoteData(); render(); showToast('Signed out.'); return;
   }
@@ -792,6 +827,25 @@ app.addEventListener('click', async (event) => {
   if (action === 'toggle-menu') { ui.mobileOpen = !ui.mobileOpen; render(); return; }
   if (action === 'close-menu') { ui.mobileOpen = false; render(); return; }
   if (action === 'notifications') { ui.notifications = !ui.notifications; render(); return; }
+  if (action === 'date-preset') { const range=datePreset(target.dataset.preset,today); ui.dateFrom=range.from; ui.dateTo=range.to; ui.page=1; render(); return; }
+  if (['export-csv','export-report','export-report-section'].includes(action)) {
+    if (!ui.session || !isRemoteConnected()) { showToast('Sign in and connect to your farm database before exporting.', 'error'); return; }
+    let rows, columns, name;
+    if (action === 'export-csv') {
+      const def=modules[ui.view]; if (!def) return;
+      rows=filterRows(def,state[def.key] || []); columns=exportColumns(def,rows); name=def.key;
+    } else {
+      rows=currentReportRows(); name=ui.reportShed==='all' ? 'farm-report' : `shed-report-${state.sheds.find((shed)=>shed.name===ui.reportShed)?.id || 'selected'}`;
+      if(action==='export-report-section') {
+        const key=target.dataset.key; if(!reportKeys.includes(key)) return;
+        rows=rows.filter((row)=>row.reportSection===modules[key].title); name+=`-${key}`;
+      }
+      columns=reportColumns(rows,modules,action==='export-report-section' ? [target.dataset.key] : reportKeys);
+    }
+    if(!rows.length) { showToast('No matching records to export.', 'info'); return; }
+    downloadCsv(makeCsv(rows,columns),`nestledger-${name}-${ui.dateFrom || 'all'}-to-${ui.dateTo || 'latest'}`);
+    showToast(`Exported ${rows.length} records.`); return;
+  }
   if (action === 'clear-dates') { ui.dateFrom = ''; ui.dateTo = ''; ui.page = 1; render(); return; }
   if (action === 'range') { ui.range = Number(target.dataset.range); render(); return; }
   if (action === 'quick-entry') return openQuickEntry();
@@ -835,6 +889,7 @@ app.addEventListener('input', (event) => {
   }
 });
 app.addEventListener('change', (event) => {
+  if (event.target.id === 'reportShed') { ui.reportShed=event.target.value; render(); return; }
   if (event.target.id === 'languageSwitch') { setLanguage(event.target.value); render(); translateUI(app); return; }
   if (event.target.id === 'dateFrom' || event.target.id === 'dateTo') {
     const from = event.target.id === 'dateFrom' ? event.target.value : ui.dateFrom;
@@ -868,9 +923,9 @@ app.addEventListener('submit', async (event) => {
     if (!data.name.trim()) { const el = $('[data-error="name"]', form); if (el) el.textContent = 'Name is required.'; return; }
     if (!data.email.trim()) { const el = $('[data-error="email"]', form); if (el) el.textContent = 'Email is required.'; return; }
     if (data.newPassword && data.newPassword !== data.confirmPassword) { const el = $('[data-error="confirmPassword"]', form); if (el) el.textContent = 'Passwords do not match.'; return; }
-    if (data.newPassword && data.newPassword.length < 8) { const el = $('[data-error="newPassword"]', form); if (el) el.textContent = 'Must be at least 8 characters.'; return; }
+    if (data.newPassword && data.newPassword.length < 12) { const el = $('[data-error="newPassword"]', form); if (el) el.textContent = 'Use at least 12 characters.'; return; }
     try {
-      const payload = { name: data.name.trim(), email: data.email.trim() };
+      const payload = { name: data.name.trim(), email: data.email.trim(), currentPassword: data.currentPassword };
       if (data.newPassword) { payload.currentPassword = data.currentPassword; payload.newPassword = data.newPassword; }
       const response = await fetch('/api/auth/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, credentials: 'same-origin', body: JSON.stringify(payload) });
       const result = await response.json().catch(() => ({}));
@@ -885,7 +940,7 @@ app.addEventListener('submit', async (event) => {
       if (data.newPassword) {
         showToast('Password changed. Please sign in again.', 'warning');
         setTimeout(async () => {
-          try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+          try { const response = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); if (!response.ok) throw new Error(); } catch { showToast('Could not sign out. Check your connection and try again.', 'error'); return; }
           ui.session = null; clearRemoteData(); render(); openAuthModal('login');
         }, 1500);
       } else {
@@ -937,7 +992,7 @@ document.addEventListener('keydown', (event) => { if (event.key === 'Escape') cl
 async function boot() {
   render();
   try {
-    await Promise.all([refreshSession(), refreshApiHealth()]);
+    await Promise.all([refreshSession(), refreshApiHealth(), fetch('/api/auth/config', { credentials: 'same-origin' }).then((res) => res.json()).then((result) => { if (result.success) ui.authConfig = result.data; })]);
     await refreshResources();
   } catch (error) {
     if (error?.status === 401) {
@@ -949,6 +1004,24 @@ async function boot() {
   if (!state.sheds || !state.sheds.length) state.sheds = createEmptyData().sheds;
   if (!isRemoteConnected()) persistLocal(state);
   render();
+  const params = new URLSearchParams(location.search);
+  const error = params.get('auth_error');
+  if (error || params.has('auth_success')) {
+    params.delete('auth_error'); params.delete('auth_success');
+    history.replaceState(null, '', location.pathname + (params.size ? `?${params}` : '') + location.hash);
+    const errors = {
+      google_unavailable: 'Google sign-in is not configured yet. Use your email and password.',
+      google_expired: 'Google sign-in expired. Please try again.',
+      google_cancelled: 'Google sign-in was cancelled. You can try again.',
+      google_failed: 'Google sign-in could not be completed. Please try again.',
+      google_link_required: 'This email already has an account. Sign in with your password, then connect Google from My Account.',
+      google_link_mismatch: 'Choose the Google account that matches your current account email.',
+      session_expired: 'Sign in again before connecting Google.',
+      registration_disabled: 'New accounts are disabled. Ask the farm administrator for access.',
+    };
+    if (error) { openAuthModal('login'); showToast(errors[error] || errors.google_failed, 'error'); }
+    else showToast('Signed in with Google successfully.');
+  }
 }
 watchTranslations();
 boot();

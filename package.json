@@ -8,11 +8,14 @@
     "dev": "node --watch server/index.js",
     "build": "vite build",
     "start": "node server/index.js --production",
-    "db:import": "node scripts/import-json.js"
+    "db:import": "node scripts/import-json.js",
+    "test:auth": "node scripts/auth-test.js",
+    "test:exports": "node scripts/export-test.js"
   },
   "dependencies": {
     "dotenv": "^18.0.5",
     "express": "^4.21.2",
+    "jose": "^6.2.12",
     "pg": "^8.23.1"
   },
   "devDependencies": {

@@ -27,10 +27,7 @@ export function persistLocal(next) {
 export const apiRoot = () => (window.FARM_API_URL || localStorage.getItem('nestledger.apiUrl') || '').replace(/\/$/, '');
 function apiHeaders() {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
-  try {
-    const token = sessionStorage.getItem('nestledger.apiToken');
-    if (token) headers.Authorization = `Bearer ${token}`;
-  } catch { /* Storage may be disabled; same-origin session cookies still work. */ }
+
   return headers;
 }
 export async function request(path, method = 'GET', body) {

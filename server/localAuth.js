@@ -1,60 +1,19 @@
 import crypto from 'node:crypto';
 import { query, withTx } from './db/pool.js';
-
+import { hashPassword, verifyPassword, hashToken, parseCookies, validEmail, validPassword, validName, cookie, sameOrigin } from './authSecurity.js';
+import { registerGoogleRoutes } from './googleAuth.js';
 const SESSION_COOKIE = 'nestledger_session';
-const isProd = process.argv.includes('--production');
-const SECURE = isProd ? '; Secure' : '';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
-
-// Simple login rate limit: 10 failed tries / 15 minutes / IP address.
-const attempts = new Map();
-function tooManyAttempts(req) {
-  const ip = req.ip || 'unknown';
-  const now = Date.now();
-  const list = (attempts.get(ip) || []).filter((t) => now - t < 15 * 60 * 1000);
-  attempts.set(ip, list);
-  return list.length >= 10;
-}
-function recordFailure(req) { const ip = req.ip || 'unknown'; attempts.set(ip, [...(attempts.get(ip) || []), Date.now()]); }
-
-const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
-
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password, stored) {
-  const [salt, expected] = String(stored || '').split(':');
-  if (!salt || !expected) return false;
-  const actual = crypto.scryptSync(password, salt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
-}
-
-function parseCookies(header = '') {
-  return Object.fromEntries(header.split(';').map((part) => {
-    const index = part.indexOf('=');
-    if (index < 0) return ['', ''];
-    return [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
-  }).filter(([key]) => key));
-}
-
-function setSessionCookie(res, token) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${SECURE}`);
-}
-function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${SECURE}`);
-}
-const publicUser = (user) => (user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null);
-
-async function createSession(db, userId) {
-  const token = crypto.randomBytes(32).toString('hex');
+const isProd = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
+const publicUser = (user) => user ? { id: user.id, name: user.name, email: user.email, role: user.role, googleLinked: Boolean(user.google_sub), hasPassword: Boolean(user.password_hash) } : null;
+const fail = (res, status, message) => res.status(status).json({success:false,message});
+const ah = (fn) => (req,res,next) => Promise.resolve(fn(req,res,next)).catch(next);
+export async function createSession(db, userId, previousToken) {
+  if (previousToken) await db.query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(previousToken)]);
   await db.query('DELETE FROM sessions WHERE expires_at < now()');
-  await db.query('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)', [hashToken(token), userId, new Date(Date.now() + SESSION_TTL_MS)]);
+  const token = crypto.randomBytes(32).toString('hex');
+  await db.query('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1,$2,$3)', [hashToken(token),userId,new Date(Date.now()+604800000)]);
   return token;
 }
-
 // Reuse existing administrator accounts and reject staff-email conflicts clearly.
 export async function initializeAdmin(db, { email, password = '', name = 'Farm Admin', production = false, explicitEmail = true }) {
   const adminEmail = String(email || 'admin@nestledger.local').trim().toLowerCase();
@@ -72,17 +31,25 @@ export async function initializeAdmin(db, { email, password = '', name = 'Farm A
     }
     await db.query(
       "INSERT INTO users (id, name, email, password_hash, role) VALUES ('USR-ADMIN', $1, $2, $3, 'admin')",
-      [name, adminEmail, hashPassword(password || 'Admin@123')],
+      [name, adminEmail, await hashPassword(password || 'Admin@123')],
     );
+    await db.query('INSERT INTO meta (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value', ['admin-bootstrap:USR-ADMIN',JSON.stringify({email:adminEmail,passwordHash:await hashPassword(password || 'Admin@123')})]);
     return;
   }
-  if (password && !verifyPassword(password, admin.password_hash)) {
-    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(password), admin.id]);
+  const bootstrapKey = `admin-bootstrap:${admin.id}`;
+  const bootstrapRow = (await db.query('SELECT value FROM meta WHERE key=$1',[bootstrapKey])).rows[0];
+  let bootstrap = null;
+  try { bootstrap = bootstrapRow ? JSON.parse(bootstrapRow.value) : null; } catch {}
+  // A profile change must survive restarts. Apply environment credentials only when configuration changes.
+  const passwordChanged = password && (!bootstrap?.passwordHash || !await verifyPassword(password, bootstrap.passwordHash));
+  if (passwordChanged && !await verifyPassword(password, admin.password_hash)) {
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await hashPassword(password), admin.id]);
     await db.query('DELETE FROM sessions WHERE user_id = $1', [admin.id]);
   }
-  if (explicitEmail && admin.email.toLowerCase() !== adminEmail) {
+  if (explicitEmail && bootstrap?.email !== adminEmail && admin.email.toLowerCase() !== adminEmail) {
     await db.query('UPDATE users SET email = $1 WHERE id = $2', [adminEmail, admin.id]);
   }
+  await db.query('INSERT INTO meta (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value',[bootstrapKey,JSON.stringify({email:explicitEmail ? adminEmail : bootstrap?.email,passwordHash:passwordChanged ? await hashPassword(password) : bootstrap?.passwordHash})]);
 }
 export async function initAuth() {
   await withTx((db) => initializeAdmin(db, {
@@ -94,92 +61,105 @@ export async function initAuth() {
   }));
 }
 
-export function registerAuthRoutes(app) {
-  // Update own profile (name, email, password) — any signed-in user.
-  app.put('/api/auth/profile', ah(async (req, res) => {
-    const user = await getAuthenticatedUser(req);
-    if (!user) return res.status(401).json({ success: false, message: 'Sign in to change your profile.' });
-    const { name, email, currentPassword, newPassword } = req.body || {};
-    const { rows } = await query('SELECT * FROM users WHERE id = $1', [user.id]);
-    const existing = rows[0];
-    if (!existing) return res.status(404).json({ success: false, message: 'Account not found.' });
-    // If changing password, current password must be verified first.
-    if (newPassword) {
-      if (!currentPassword) return res.status(400).json({ success: false, message: 'Enter your current password to set a new one.' });
-      if (!verifyPassword(currentPassword, existing.password_hash)) return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
-      if (newPassword.length < 8) return res.status(400).json({ success: false, message: 'New password must be at least 8 characters.' });
-    }
-    const newName = (name || '').trim() || existing.name;
-    const newEmail = (email || '').trim().toLowerCase() || existing.email;
-    if (!/^\S+@\S+\.\S+$/.test(newEmail)) return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
-    try {
-      await query('UPDATE users SET name = $1, email = $2 WHERE id = $3', [newName, newEmail, user.id]);
-      if (newPassword) {
-        await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(newPassword), user.id]);
-        // Sign out all other sessions so the new password takes effect everywhere.
-        await query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
-      }
-      return res.json({ success: true, data: { id: user.id, name: newName, email: newEmail, role: existing.role } });
-    } catch (error) {
-      if (error.code === '23505') return res.status(409).json({ success: false, message: 'That email is already used by another account.' });
-      throw error;
-    }
-  }));
-
-  app.get('/api/session', ah(async (req, res) => {
-    res.json({ success: true, data: publicUser(await getAuthenticatedUser(req)) });
-  }));
-
-  app.post('/api/auth/login', ah(async (req, res) => {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
-    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password are required.' });
-    if (tooManyAttempts(req)) return res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
-    const { rows } = await query('SELECT * FROM users WHERE lower(email) = $1', [email]);
-    const user = rows[0];
-    if (!user || !verifyPassword(password, user.password_hash)) {
-      recordFailure(req);
-      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
-    }
-    const token = await createSession({ query }, user.id);
-    setSessionCookie(res, token);
-    return res.json({ success: true, data: publicUser(user) });
-  }));
-
-  app.post('/api/auth/register', ah(async (req, res) => {
-    if (isProd && process.env.ALLOW_REGISTRATION !== 'true') return res.status(403).json({ success: false, message: 'Registration is disabled. Ask the farm admin to create your account.' });
-    const name = String(req.body?.name || '').trim();
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
-    if (name.length < 2) return res.status(400).json({ success: false, message: 'Please enter your full name.' });
-    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ success: false, message: 'Please enter a valid email.' });
-    if (password.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
-    try {
-      const user = { id: `USR-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, name, email, role: 'staff' };
-      await query('INSERT INTO users (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)', [user.id, name, email, hashPassword(password), user.role]);
-      const token = await createSession({ query }, user.id);
-      setSessionCookie(res, token);
-      return res.status(201).json({ success: true, data: publicUser(user) });
-    } catch (error) {
-      if (error.code === '23505') return res.status(409).json({ success: false, message: 'An account with that email already exists.' });
-      throw error;
-    }
-  }));
-
-  app.post('/api/logout', ah(async (req, res) => {
+export function registerAuthRoutes(app, options = {}) {
+  const dbQuery = options.query || query;
+  const tx = options.withTx || withTx;
+  const production = options.production ?? isProd;
+  const origin = options.origin ?? process.env.APP_URL?.replace(/\/$/, '');
+  const allowRegistration = options.allowRegistration ?? (process.env.ALLOW_REGISTRATION === 'true' || (!production && process.env.ALLOW_REGISTRATION !== 'false'));
+  const attempts = new Map();
+  const limiter = (req,res,next) => {
+    const key = req.ip || 'unknown'; const now = Date.now();
+    for (const [ip, record] of attempts) if (record.until < now) attempts.delete(ip);
+    const record = attempts.get(key) || { count:0, until:now+900000 };
+    if (record.count >= 30) { res.set('Retry-After','900'); return fail(res,429,'Too many sign-in attempts. Please try again in 15 minutes.'); }
+    record.count++; attempts.set(key,record); next();
+  };
+  const current = async (req) => {
     const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-    if (token) await query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(token)]);
-    clearSessionCookie(res);
-    res.json({ success: true, data: { loggedOut: true } });
+    if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
+    return (await dbQuery('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at > now()', [hashToken(token)])).rows[0] || null;
+  };
+  const session = async (req,res,user,db = {query:dbQuery}) => {
+    const token = await createSession(db,user.id,parseCookies(req.headers.cookie)[SESSION_COOKIE]);
+    cookie(res,SESSION_COOKIE,token,production);
+  };
+  app.use('/api',(req,res,next) => {
+    res.set('Cache-Control','no-store');
+    res.set('X-Content-Type-Options','nosniff');
+    res.set('Referrer-Policy','same-origin');
+    if (!sameOrigin(req,origin)) return fail(res,403,'This request is not allowed. Refresh the page and try again.');
+    next();
+  });
+  app.get('/api/auth/config',(_req,res) => res.json({success:true,data:{registrationEnabled:allowRegistration,googleEnabled:Boolean((options.google?.clientId || process.env.GOOGLE_CLIENT_ID) && (options.google?.clientSecret || process.env.GOOGLE_CLIENT_SECRET) && origin)}}));
+  app.get('/api/session',ah(async(req,res) => res.json({success:true,data:publicUser(await current(req))})));
+  app.post('/api/auth/login',limiter,ah(async(req,res) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = req.body?.password;
+    if (!validEmail(email) || typeof password !== 'string' || !password || password.length > 256) return fail(res,400,'Enter a valid email address and password.');
+    const user = (await dbQuery('SELECT * FROM users WHERE lower(email)=$1',[email])).rows[0];
+    // A dummy hash keeps nonexistent accounts on the same expensive verification path.
+    const stored = user?.password_hash || `00000000000000000000000000000000:${'0'.repeat(128)}`;
+    if (!await verifyPassword(password,stored)) return fail(res,401,'Email or password is incorrect. If you registered with Google, continue with Google.');
+    await tx(async(db) => session(req,res,user,db));
+    res.json({success:true,data:publicUser(user)});
   }));
+  app.post('/api/auth/register',limiter,ah(async(req,res) => {
+    if (!allowRegistration) return fail(res,403,'New accounts are disabled for this farm. Ask the administrator for access.');
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = req.body?.password;
+    if (!validName(name)) return fail(res,400,'Enter a name between 2 and 100 characters.');
+    if (!validEmail(email)) return fail(res,400,'Enter a valid email address.');
+    if (!validPassword(password)) return fail(res,400,'Use 12 to 256 characters with a letter and a number or symbol.');
+    const passwordHash = await hashPassword(password);
+    let user;
+    try {
+      await tx(async(db) => {
+        user = {id:`USR-${crypto.randomUUID()}`,name,email,role:'staff',password_hash:passwordHash};
+        await db.query('INSERT INTO users (id,name,email,password_hash,role) VALUES ($1,$2,$3,$4,$5)',[user.id,name,email,passwordHash,'staff']);
+        await session(req,res,user,db);
+      });
+    } catch(error) { if(error.code==='23505') return fail(res,409,'An account already uses this email. Sign in instead.'); throw error; }
+    res.status(201).json({success:true,data:publicUser(user)});
+  }));
+  app.put('/api/auth/profile',limiter,ah(async(req,res) => {
+    const user = await current(req);
+    if (!user) return fail(res,401,'Please sign in again to update your account.');
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : user.name;
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : user.email;
+    const {newPassword,currentPassword} = req.body || {};
+    if (!validName(name) || !validEmail(email)) return fail(res,400,'Enter a valid name and email address.');
+    const sensitive = email !== user.email.toLowerCase() || Boolean(newPassword);
+    if (user.google_sub && email !== user.email.toLowerCase()) return fail(res,400,'Your email is managed by Google and cannot be changed here.');
+    if (sensitive && (!user.password_hash || !await verifyPassword(currentPassword,user.password_hash))) return fail(res,401,'Enter your current password to change your email or password.');
+    if (newPassword && !validPassword(newPassword)) return fail(res,400,'Use 12 to 256 characters with a letter and a number or symbol.');
+    try {
+      await tx(async(db) => {
+        await db.query('UPDATE users SET name=$1,email=$2 WHERE id=$3',[name,email,user.id]);
+        if (newPassword) await db.query('UPDATE users SET password_hash=$1 WHERE id=$2',[await hashPassword(newPassword),user.id]);
+        if (sensitive) { await db.query('DELETE FROM sessions WHERE user_id=$1',[user.id]); await session(req,res,user,db); }
+      });
+    } catch(error) { if(error.code==='23505') return fail(res,409,'That email already belongs to another account.'); throw error; }
+    res.json({success:true,data:publicUser({...user,name,email})});
+  }));
+  app.post('/api/logout',ah(async(req,res) => {
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    if(token) await dbQuery('DELETE FROM sessions WHERE token_hash=$1',[hashToken(token)]);
+    cookie(res,SESSION_COOKIE,'',production,0);
+    res.json({success:true,data:{loggedOut:true}});
+  }));
+  registerGoogleRoutes(app,{...options.google,origin,production,allowRegistration,query:dbQuery,withTx:tx,current,session,limiter});
+  app.use('/api/auth',(error,_req,res,_next) => {
+    console.error('Authentication request failed:',error.code || error.name);
+    if (error.type === 'entity.too.large') return fail(res,413,'That request is too large. Enter shorter account details.');
+    if (error.type === 'entity.parse.failed') return fail(res,400,'Invalid request. Refresh the page and try again.');
+    fail(res,503,'Sign-in is temporarily unavailable. Please try again shortly.');
+  });
 }
-
 export async function getAuthenticatedUser(req) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-  if (!token) return null;
-  const { rows } = await query(
-    'SELECT u.id, u.name, u.email, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > now()',
-    [hashToken(token)],
-  );
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const {rows} = await query('SELECT u.id,u.name,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at > now()',[hashToken(token)]);
   return rows[0] || null;
 }

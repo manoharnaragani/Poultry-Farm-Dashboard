@@ -237,6 +237,16 @@ CREATE INDEX IF NOT EXISTS expenses_date_idx ON expenses (date);
 
 export async function initSchema() {
   await query(DDL);
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT');
+  await query('ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL');
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_key ON users (google_sub) WHERE google_sub IS NOT NULL');
+  await query(`CREATE TABLE IF NOT EXISTS oauth_states (
+    state_hash TEXT PRIMARY KEY, binding_hash TEXT NOT NULL,
+    nonce TEXT NOT NULL, verifier TEXT NOT NULL,
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL
+  )`);
+  await query('CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states (expires_at)');
   await query('ALTER TABLE farm_settings ADD COLUMN IF NOT EXISTS feed_capacity NUMERIC(12,2) NOT NULL DEFAULT 6000');
   await withTx(async (client) => {
     // One-time starter data: an empty farm with 3 sheds and 3 feed types (edit them in the app).

@@ -11,7 +11,9 @@ It uses its own email/password login and stores all data in PostgreSQL, so the s
 - Charts/UI: custom CSS + vanilla JavaScript
 
 ## Features
-- Secure sign in and sign out
+- Secure email/password sign in and sign out
+- Continue with Google for sign in and signup (OAuth configuration required; see DEPLOY.md)
+- Explicit Google linking for existing password accounts
 - Staff account registration
 - Dashboard with eggs, sales, expenses, mortality, workers, and feed stock
 - Workers, attendance, worker payments, assignments, daily wages
@@ -42,3 +44,13 @@ server/             Express server and authentication
 server/db/          PostgreSQL connection, tables, repository
 scripts/            import-json.js (optional one-time migration of legacy JSON into PostgreSQL)
 ```
+
+## View and export historical data
+
+Open any record section and select From date / To date, or use Today, Yesterday, Last 7 days, Last 30 days, or Previous month. Last 7 and 30 days include today; Previous month selects the entire previous calendar month. Search and shed/status filters also apply to **Export CSV**. Downloads include all matching records, not just the visible table page.
+
+Open **Finance & farm > Reports** for a combined farm CSV or individual section exports. Choose a period and optionally a shed. Shed reports include records explicitly assigned to that shed; shared sales, feed purchases, and attendance/payments without a recorded shed are included only in overall farm reports. Selecting a shed does not guess historical worker assignments.
+
+Files use UTF-8 with an Excel-compatible BOM, ISO dates, and recorded numbers. User-entered text that could execute spreadsheet formulas is escaped. Exports do not modify stored records.
+
+Run `pnpm test:exports` to check export formatting, ranges, pagination-independent records, and shed scope.
