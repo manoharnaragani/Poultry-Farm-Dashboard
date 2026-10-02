@@ -55,31 +55,43 @@ async function createSession(db, userId) {
   return token;
 }
 
-// Creates the first admin account (and applies ADMIN_PASSWORD changes) at startup.
+// Reuse existing administrator accounts and reject staff-email conflicts clearly.
+export async function initializeAdmin(db, { email, password = '', name = 'Farm Admin', production = false, explicitEmail = true }) {
+  const adminEmail = String(email || 'admin@nestledger.local').trim().toLowerCase();
+  // Serialize startup on multiple application instances.
+  await db.query('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE');
+  const { rows } = await db.query("SELECT * FROM users WHERE id = 'USR-ADMIN' OR lower(email) = $1 FOR UPDATE", [adminEmail]);
+  const matching = rows.find((user) => user.email.toLowerCase() === adminEmail);
+  if (matching && matching.role !== 'admin') {
+    throw new Error('ADMIN_EMAIL belongs to an existing staff account. In Render Environment, use the email of your existing administrator or an unused email, then redeploy.');
+  }
+  const admin = matching || rows.find((user) => user.id === 'USR-ADMIN');
+  if (!admin) {
+    if (production && (!explicitEmail || !password)) {
+      throw new Error('First start: set ADMIN_EMAIL and ADMIN_PASSWORD environment variables to create the admin account.');
+    }
+    await db.query(
+      "INSERT INTO users (id, name, email, password_hash, role) VALUES ('USR-ADMIN', $1, $2, $3, 'admin')",
+      [name, adminEmail, hashPassword(password || 'Admin@123')],
+    );
+    return;
+  }
+  if (password && !verifyPassword(password, admin.password_hash)) {
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(password), admin.id]);
+    await db.query('DELETE FROM sessions WHERE user_id = $1', [admin.id]);
+  }
+  if (explicitEmail && admin.email.toLowerCase() !== adminEmail) {
+    await db.query('UPDATE users SET email = $1 WHERE id = $2', [adminEmail, admin.id]);
+  }
+}
 export async function initAuth() {
-  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@nestledger.local').toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD || '';
-  await withTx(async (db) => {
-    const { rows } = await db.query("SELECT * FROM users WHERE id = 'USR-ADMIN' FOR UPDATE");
-    const admin = rows[0];
-    if (!admin) {
-      if (isProd && (!process.env.ADMIN_EMAIL || !adminPassword)) {
-        throw new Error('First start: set ADMIN_EMAIL and ADMIN_PASSWORD environment variables to create the admin account.');
-      }
-      const password = adminPassword || 'Admin@123';
-      await db.query(
-        "INSERT INTO users (id, name, email, password_hash, role) VALUES ('USR-ADMIN', $1, $2, $3, 'admin')",
-        [process.env.ADMIN_NAME || 'Farm Admin', adminEmail, hashPassword(password)],
-      );
-    } else if (adminPassword && !verifyPassword(adminPassword, admin.password_hash)) {
-      // Changing ADMIN_PASSWORD in the environment resets the admin password and signs the admin out everywhere.
-      await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(adminPassword), admin.id]);
-      await db.query('DELETE FROM sessions WHERE user_id = $1', [admin.id]);
-    }
-    if (admin && process.env.ADMIN_EMAIL && admin.email.toLowerCase() !== adminEmail) {
-      await db.query('UPDATE users SET email = $1 WHERE id = $2', [adminEmail, admin.id]);
-    }
-  });
+  await withTx((db) => initializeAdmin(db, {
+    email: process.env.ADMIN_EMAIL,
+    password: process.env.ADMIN_PASSWORD || '',
+    name: process.env.ADMIN_NAME || 'Farm Admin',
+    production: isProd,
+    explicitEmail: Boolean(process.env.ADMIN_EMAIL),
+  }));
 }
 
 export function registerAuthRoutes(app) {
