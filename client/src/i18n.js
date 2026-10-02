@@ -1,4 +1,7 @@
 const telugu = {
+  'Add shed': 'షెడ్‌ను చేర్చండి', 'Manage sheds': 'షెడ్లను నిర్వహించండి',
+  'All farm sheds': 'ఫారంలోని అన్ని షెడ్లు',
+  'Add as many sheds as your farm needs. Rename sheds or update hen counts in Shed overview.': 'మీ ఫారానికి అవసరమైనన్ని షెడ్లను చేర్చండి. షెడ్ వివరాలలో పేర్లు లేదా కోళ్ల సంఖ్యను మార్చండి.',
   'Add record': 'రికార్డును చేర్చండి', 'Open dashboard': 'డాష్‌బోర్డ్ తెరవండి',
   'Light mode': 'లైట్ మోడ్', 'Dark mode': 'డార్క్ మోడ్', 'Colour mode': 'రంగు విధానం',
   'Overview': 'అవలోకనం', 'Overall dashboard': 'మొత్తం ఫారం డాష్‌బోర్డ్',

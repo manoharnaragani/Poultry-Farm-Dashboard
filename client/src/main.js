@@ -10,7 +10,7 @@ import { apiRoot, clearRemoteData, clearDemoStorage, getLocalData, isRemoteConne
 const state = getLocalData();
 const ui = { view: 'dashboard', search: '', filter: 'all', dateFrom: '', dateTo: '', page: 1, sort: '', direction: 1, range: 7, mobileOpen: false, notifications: false, session: null, apiHealth: null };
 const pageSize = 8;
-const shedOptions = ['Shed 1', 'Shed 2', 'Shed 3'];
+const shedOptions = () => state.sheds.map((shed) => shed.name);
 const categories = ['Labour', 'Feed', 'Medicines', 'Transport', 'Electricity', 'Water', 'Repairs', 'Cleaning', 'Fuel', 'Supplies', 'Other'];
 const paymentMethods = ['Cash', 'UPI', 'Bank'];
 const workerOptions = () => state.workers.filter((worker) => worker.status === 'Active').map((worker) => ({ value: worker.id, label: worker.name }));
@@ -32,7 +32,7 @@ const modules = {
     filterLabel: 'All sheds', filterField: 'assignedShed', filterOptions: shedOptions,
   },
   attendance: {
-    title: 'Attendance', subtitle: 'Daily roll call, hours, and overtime across all three sheds.', key: 'attendance', endpoint: '/attendance', singular: 'attendance record', addLabel: 'Record attendance',
+    title: 'Attendance', subtitle: 'Daily roll call, hours, and overtime across all sheds.', key: 'attendance', endpoint: '/attendance', singular: 'attendance record', addLabel: 'Record attendance',
     columns: [{ key: 'worker', label: 'Worker', render: (r) => `<div class="table-name">${esc(r.worker || workerName(r.workerId))}</div><div class="table-sub">${esc(workerShed(r.workerId))}</div>` }, { key: 'date', label: 'Date', format: 'date' }, { key: 'status', label: 'Status', format: 'badge' }, { key: 'checkIn', label: 'Check-in' }, { key: 'checkOut', label: 'Check-out' }, { key: 'workingHours', label: 'Hours', suffix: ' h' }, { key: 'overtime', label: 'Overtime', suffix: ' h' }],
     fields: [select('workerId', 'Worker', workerOptions), date(), select('status', 'Attendance status', ['Present', 'Absent', 'Half Day', 'Leave', 'Overtime']), { key: 'checkIn', label: 'Check-in', type: 'time', required: false }, { key: 'checkOut', label: 'Check-out', type: 'time', required: false }, number('overtime', 'Overtime hours', false, '0.25'), note()],
     filterLabel: 'All statuses', filterField: 'status', filterOptions: ['Present', 'Absent', 'Half Day', 'Leave', 'Overtime'],
@@ -82,11 +82,11 @@ const modules = {
   expenses: {
     title: 'Daily expenses', subtitle: 'Farm spend by category, shed, supplier, and payment method.', key: 'expenses', endpoint: '/expenses', singular: 'expense', addLabel: 'Add expense',
     columns: [{ key: 'date', label: 'Date', format: 'date' }, { key: 'category', label: 'Category', format: 'badge' }, { key: 'amount', label: 'Amount', format: 'money' }, { key: 'shed', label: 'Shed' }, { key: 'vendor', label: 'Paid to / vendor' }, { key: 'paymentMethod', label: 'Method' }, { key: 'description', label: 'Description' }],
-    fields: [date(), select('category', 'Category', categories), number('amount', 'Amount (₹)', true, '0.01'), select('shed', 'Shed / farm-wide', [...shedOptions, 'Common']), text('vendor', 'Paid to / vendor', false), select('paymentMethod', 'Payment method', paymentMethods), text('description', 'Description'), text('addedBy', 'Added by', false)],
+    fields: [date(), select('category', 'Category', categories), number('amount', 'Amount (₹)', true, '0.01'), select('shed', 'Shed / farm-wide', () => [...shedOptions(), 'Common']), text('vendor', 'Paid to / vendor', false), select('paymentMethod', 'Payment method', paymentMethods), text('description', 'Description'), text('addedBy', 'Added by', false)],
     filterLabel: 'All categories', filterField: 'category', filterOptions: categories,
   },
   sheds: {
-    title: 'Shed overview', subtitle: 'Your farm has exactly three sheds. Review capacity, output, and staffing.', key: 'sheds', endpoint: '/sheds', singular: 'shed', addLabel: '',
+    title: 'Shed overview', subtitle: 'Add and edit sheds, review capacity, output, and staffing.', key: 'sheds', endpoint: '/sheds', singular: 'shed', addLabel: 'Add shed',
     columns: [{ key: 'name', label: 'Shed', render: (r) => `<div class="table-name">${esc(r.name)}</div><div class="table-sub">${esc(r.notes || 'Layer house')}</div>` }, { key: 'hens', label: 'Hens', format: 'number' }, { key: 'eggsToday', label: 'Eggs today', render: (r) => num(sum(state.eggs.filter((x) => x.date === today && x.shed === r.name), 'totalEggs')) }, { key: 'mortalityToday', label: 'Mortality', render: (r) => num(sum(state.mortality.filter((x) => x.date === today && x.shed === r.name), 'count')) }, { key: 'feedToday', label: 'Feed today', render: (r) => `${num(sum(state.feedUsage.filter((x) => x.date === today && x.shed === r.name), 'quantity'))} kg` }, { key: 'assignedWorkers', label: 'Workers', render: (r) => state.workers.filter((w) => w.assignedShed === r.name && w.status === 'Active').length }, { key: 'expensesToday', label: 'Expenses today', render: (r) => money(sum(state.expenses.filter((x) => x.date === today && x.shed === r.name), 'amount')) }],
     fields: [text('name', 'Shed name'), number('hens', 'Number of hens', true), text('notes', 'Description', false)], filterLabel: 'All sheds', filterField: 'name', filterOptions: shedOptions,
   },
@@ -204,11 +204,11 @@ function farmNotifications() {
   const lowStock = state.feedStock.filter((item) => Number(item.quantity) <= Number(item.minStock));
   if (lowStock.length) items.push({ title: `Low feed stock · ${lowStock.length} item${lowStock.length === 1 ? '' : 's'}`, description: lowStock.map((item) => item.name).join(', ')});
   const missing = state.workers.filter((worker) => worker.status === 'Active' && !state.attendance.some((record) => record.date === today && String(record.workerId) === String(worker.id))).length;
-  if (missing) items.push({ title: `Attendance missing · ${missing} worker${missing === 1 ? '' : 's'}`, description: 'Review today’s roll call across the three sheds.' });
+  if (missing) items.push({ title: `Attendance missing · ${missing} worker${missing === 1 ? '' : 's'}`, description: 'Review today’s roll call across all sheds.' });
   return items;
 }
 function renderTopbar() {
-  const title = ui.view.startsWith('dashboard-shed-') ? `Shed ${ui.view.split('-').pop()} dashboard` : ui.view === 'dashboard' ? 'Overall dashboard' : ui.view === 'settings' ? 'Farm settings' : ui.view === 'account' ? 'My Account' : modules[ui.view]?.title || 'Farm overview';
+  const title = ui.view.startsWith('dashboard-shed-') ? `${state.sheds.find((shed) => String(shed.id) === ui.view.split('-').pop())?.name || 'Shed'} dashboard` : ui.view === 'dashboard' ? 'Overall dashboard' : ui.view === 'settings' ? 'Farm settings' : ui.view === 'account' ? 'My Account' : modules[ui.view]?.title || 'Farm overview';
 
   const notices = farmNotifications();
   return `<header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" data-action="toggle-menu" aria-label="Open navigation">${icon('menu', 18)}</button><div class="top-title">${esc(title)}</div><div class="top-date">${prettyDate(today, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div></div><div class="topbar-actions"><select id="languageSwitch" class="language-switch" aria-label="Language" data-no-translate><option value="en" ${getLanguage() === 'en' ? 'selected' : ''}>English</option><option value="te" ${getLanguage() === 'te' ? 'selected' : ''}>&#3108;&#3142;&#3122;&#3137;&#3095;&#3137;</option></select><label class="search-box" style="max-width:210px;min-width:160px;height:32px"><span>${icon('search', 14)}</span><input id="globalSearch" type="search" placeholder="Search this page…" value="${esc(ui.search)}" aria-label="Search this page"></label><button class="icon-button" data-action="notifications" aria-label="Notifications">${icon('bell', 16)}${notices.length ? '<span class="notification-dot"></span>' : ''}</button><div class="top-divider"></div><div class="profile top-profile"><div class="avatar">${esc(accountInitials())}</div><div><div class="profile-name">${esc(accountName())}</div><div class="profile-role">${ui.session ? `${esc(ui.session.role)} account` : 'Signed out'}</div></div><button class="btn btn-quiet" style="height:32px;padding:0 9px" data-action="${ui.session ? 'sign-out' : 'sign-in'}">${ui.session ? 'Sign out' : 'Sign in'}</button></div></div>${ui.notifications ? `<div class="notice-popover"><div class="notice-head">Farm alerts</div>${notices.length ? notices.map((item) => `<div class="notice-line">${esc(item.title)}<span>${esc(item.description)}</span></div>`).join('') : '<div class="notice-line">No urgent reminders<span>All key records look current.</span></div>'}</div>` : ''}</header>`;
@@ -292,7 +292,7 @@ function monthlySummary() {
   return `<div class="monthly-strip"><div class="monthly-net"><div class="monthly-label">${new Intl.DateTimeFormat('en-IN', { month: 'long' }).format(new Date(`${today}T12:00:00`))} net amount</div><div class="monthly-value">${money(net)}</div><div class="monthly-note">Sales less recorded expenses</div></div><div class="month-cell"><div class="month-cell-label">Total sales</div><div class="month-cell-value">${money(totalSales)}</div><div class="month-cell-delta">${num(trays)} trays sold</div></div><div class="month-cell"><div class="month-cell-label">Total expenses</div><div class="month-cell-value">${money(totalExpenses)}</div><div class="month-cell-delta">${money(wageSpend)} wages paid</div></div><div class="month-cell"><div class="month-cell-label">Egg production</div><div class="month-cell-value">${num(eggs)}</div><div class="month-cell-delta">${num(trays)} trays · ${money(feedExpenses)} feed</div></div><div class="month-cell"><div class="month-cell-label">Feed expenses</div><div class="month-cell-value">${money(feedExpenses)}</div><div class="month-cell-delta">${num(sum(currentMonthRows(state.feedUsage), 'quantity'))} kg used</div></div></div>`;
 }
 function dashboardTabs() {
-  const tabs = [{ id: 'dashboard', label: 'Overall dashboard' }, ...[1, 2, 3].map((id) => ({ id: `dashboard-shed-${id}`, label: `Shed ${id} dashboard` }))];
+  const tabs = [{ id: 'dashboard', label: 'Overall dashboard' }, ...state.sheds.map((shed) => ({ id: `dashboard-shed-${shed.id}`, label: `${shed.name} dashboard` }))];
   return `<nav class="dashboard-tabs" aria-label="Dashboards">${tabs.map((tab) => `<button class="dashboard-tab ${ui.view === tab.id ? 'active' : ''}" data-action="navigate" data-view="${tab.id}" aria-current="${ui.view === tab.id ? 'page' : 'false'}">${esc(tab.label)}</button>`).join('')}</nav>`;
 }
 
@@ -313,7 +313,7 @@ function renderDashboard() {
   if (missing) alerts.push({ type: 'critical', title: `${missing} attendance record${missing > 1 ? 's' : ''} missing`, copy: 'Complete the daily roll call for all active workers.' });
   if (!alerts.length) alerts.push({ type: 'clear', title: 'Operations look steady', copy: 'Feed stock is above minimum and today’s records are up to date.' });
   const activity = [
-    { icon: 'egg', tone: '', main: `<b>${num(metrics.eggsToday)} eggs collected</b> across three sheds`, time: 'Today · Production log' },
+    { icon: 'egg', tone: '', main: `<b>${num(metrics.eggsToday)} eggs collected</b> across all sheds`, time: 'Today · Production log' },
     { icon: 'basket', tone: 'amber', main: `<b>${num(metrics.traysToday)} trays sold</b> for ${money(metrics.salesToday)}`, time: 'Today · Tray sales' },
     { icon: 'pulse', tone: 'red', main: `<b>${num(metrics.deathsToday)} bird losses</b> recorded across the farm`, time: 'Today · Mortality log' },
     { icon: 'wallet', tone: '', main: `<b>${money(metrics.expensesToday)} expenses</b> entered for today`, time: 'Today · Farm expenses' },
@@ -324,7 +324,7 @@ function renderDashboard() {
   return `${connectionBanner()}${pageHeading('Overall dashboard', 'Here’s your farm at a glance. Keep the day moving.', `<div class="date-chip">${icon('calendar', 14)}${prettyDate(today, { weekday: 'short', day: 'numeric', month: 'short' })}</div><button class="btn btn-primary" data-action="quick-entry">${icon('plus', 15)} Add record</button>`)}
     <section class="stats-grid" aria-label="Today's farm statistics">
       ${metricCard('Eggs today', num(metrics.eggsToday), `${layRate}% lay rate`, 'egg')}
-      ${metricCard('Feed used today', `${num(sum(todayRows(state.feedUsage), 'quantity'))} kg`, 'Across 3 sheds', 'leaf')}
+      ${metricCard('Feed used today', `${num(sum(todayRows(state.feedUsage), 'quantity'))} kg`, 'All farm sheds', 'leaf')}
       ${metricCard('Mortality today', num(metrics.deathsToday), 'Deaths recorded today', 'pulse', 'red', 'down')}
       ${metricCard('Expenses today', money(metrics.expensesToday), 'Farm spend recorded', 'receipt', 'red', 'down')}
     </section>
@@ -399,15 +399,15 @@ function summaryTiles(def) {
   if (def.key === 'workers') items = [['Active workers', rows.filter((r) => r.status === 'Active').length, 'Across all sheds'], ['Monthly payroll', money(sum(rows.filter((r) => r.salaryType === 'Monthly' && r.status === 'Active'), 'salary')), 'Before advances & deductions'], ['Present today', todayRows(state.attendance).filter((r) => r.status === 'Present').length, 'Attendance recorded'], ['Pending wages', money(sum(state.dailyWages.filter((r) => r.paymentStatus !== 'Paid'), 'wage')), 'Daily wage records']];
   else if (def.key === 'attendance') items = [['Present today', todayRows(rows).filter((r) => r.status === 'Present').length, 'Workers marked present'], ['Absent today', todayRows(rows).filter((r) => r.status === 'Absent').length, 'Review attendance'], ['Leave / half day', todayRows(rows).filter((r) => ['Leave', 'Half Day'].includes(r.status)).length, 'Today’s roster'], ['Overtime this month', `${num(sum(currentMonthRows(rows), 'overtime'))} h`, 'Across all workers']];
   else if (def.key === 'payments') items = [['Paid this month', money(sum(currentMonthRows(rows).filter((r) => r.paymentStatus === 'Paid' || r.paymentStatus === 'Partially Paid'), 'amount')), 'Recorded cash / bank payments'], ['Salary payable', money(payrollDue().amount), `${payrollDue().workersDue} workers still due`], ['Open daily wages', money(sum(state.dailyWages.filter((r) => r.paymentStatus !== 'Paid'), 'wage')), 'Pending / partial'], ['Advances this month', money(sum(currentMonthRows(rows).filter((r) => r.type === 'Advance'), 'amount')), 'Deducted from payable']];
-  else if (def.key === 'feedStock') items = [['Current feed stock', `${num(sum(rows, 'quantity'))} kg`, 'All feed types'], ['Today’s usage', `${num(sum(todayRows(state.feedUsage), 'quantity'))} kg`, 'Across 3 sheds'], ['This month used', `${num(sum(currentMonthRows(state.feedUsage), 'quantity'))} kg`, 'Feed consumption'], ['Low-stock items', rows.filter((r) => Number(r.quantity) <= Number(r.minStock)).length, 'At or below minimum']];
+  else if (def.key === 'feedStock') items = [['Current feed stock', `${num(sum(rows, 'quantity'))} kg`, 'All feed types'], ['Today’s usage', `${num(sum(todayRows(state.feedUsage), 'quantity'))} kg`, 'All farm sheds'], ['This month used', `${num(sum(currentMonthRows(state.feedUsage), 'quantity'))} kg`, 'Feed consumption'], ['Low-stock items', rows.filter((r) => Number(r.quantity) <= Number(r.minStock)).length, 'At or below minimum']];
   else if (def.key === 'feedUsage') items = [['Today’s usage', `${num(sum(todayRows(rows), 'quantity'))} kg`, 'Across all sheds'], ['This week', `${num(sum(rows.filter((r) => r.date >= dateOffset(-6)), 'quantity'))} kg`, 'Last 7 days'], ['This month', `${num(sum(currentMonthRows(rows), 'quantity'))} kg`, 'Feed consumed'], ['Feed on hand', `${num(sum(state.feedStock, 'quantity'))} kg`, 'Current stock']];
   else if (def.key === 'feedPurchases') items = [['Purchases this month', money(sum(currentMonthRows(rows), 'totalAmount')), 'Feed expense'], ['Quantity purchased', `${num(sum(currentMonthRows(rows), 'quantity'))} kg`, 'This month'], ['Current feed stock', `${num(sum(state.feedStock, 'quantity'))} kg`, 'Across feed types'], ['Purchase records', rows.length, 'All recorded entries']];
-  else if (def.key === 'eggs') items = [['Collected today', num(sum(todayRows(rows), 'totalEggs')), 'All three sheds'], ['Good eggs today', num(sum(todayRows(rows), 'goodEggs')), 'Recorded as good'], ['This month', num(sum(currentMonthRows(rows), 'totalEggs')), 'Eggs collected'], ['Average lay rate', `${state.sheds.length ? (sum(todayRows(rows), 'totalEggs') / Math.max(sum(state.sheds, 'hens'), 1) * 100).toFixed(1) : '0.0'}%`, 'Today’s eggs / hens']];
-  else if (def.key === 'mortality') items = [['Today’s mortality', num(sum(todayRows(rows), 'count')), 'Deaths recorded'], ['This month', num(sum(currentMonthRows(rows), 'count')), 'Bird losses'], ['Sheds reporting', new Set(todayRows(rows).map((r) => r.shed)).size, 'Today'], ['Today’s hens', num(sum(state.sheds, 'hens')), 'Across exactly 3 sheds']];
+  else if (def.key === 'eggs') items = [['Collected today', num(sum(todayRows(rows), 'totalEggs')), 'All farm sheds'], ['Good eggs today', num(sum(todayRows(rows), 'goodEggs')), 'Recorded as good'], ['This month', num(sum(currentMonthRows(rows), 'totalEggs')), 'Eggs collected'], ['Average lay rate', `${state.sheds.length ? (sum(todayRows(rows), 'totalEggs') / Math.max(sum(state.sheds, 'hens'), 1) * 100).toFixed(1) : '0.0'}%`, 'Today’s eggs / hens']];
+  else if (def.key === 'mortality') items = [['Today’s mortality', num(sum(todayRows(rows), 'count')), 'Deaths recorded'], ['This month', num(sum(currentMonthRows(rows), 'count')), 'Bird losses'], ['Sheds reporting', new Set(todayRows(rows).map((r) => r.shed)).size, 'Today'], ['Today’s hens', num(sum(state.sheds, 'hens')), 'All farm sheds']];
   else if (def.key === 'sales') items = [['Trays sold today', num(sum(todayRows(rows), 'trays')), 'Egg tray sales'], ['Sales today', money(sum(todayRows(rows), 'totalAmount')), 'Stored sale prices'], ['This month', money(sum(currentMonthRows(rows), 'totalAmount')), `${num(sum(currentMonthRows(rows), 'trays'))} trays`], ['Pending collection', money(sum(rows.filter((r) => r.paymentStatus !== 'Paid'), 'totalAmount')), 'Pending / partial']];
   else if (def.key === 'expenses') items = [['Today’s spend', money(sum(todayRows(rows), 'amount')), 'All farm expenses'], ['This month', money(sum(currentMonthRows(rows), 'amount')), 'Recorded expenses'], ['Feed spend', money(sum(currentMonthRows(rows).filter((r) => r.category === 'Feed'), 'amount') + sum(currentMonthRows(state.feedPurchases), 'totalAmount')), 'Expense log + purchases'], ['Highest shed spend', highestExpenseShed(), 'This month']];
-  else if (def.key === 'sheds') items = [['Total hens', num(sum(rows, 'hens')), 'Exactly 3 operating sheds'], ['Eggs today', num(sum(todayRows(state.eggs), 'totalEggs')), 'Across 3 sheds'], ['Feed used today', `${num(sum(todayRows(state.feedUsage), 'quantity'))} kg`, 'Daily shed usage'], ['Mortality today', num(sum(todayRows(state.mortality), 'count')), 'Across all sheds']];
-  else if (def.key === 'assignments') items = [['Current assignments', rows.filter((r) => !r.endDate).length, 'Active historical links'], ['Workers assigned', new Set(rows.filter((r) => !r.endDate).map((r) => r.worker)).size, 'Unique workers'], ['Sheds covered', new Set(rows.filter((r) => !r.endDate).map((r) => r.shed)).size, 'Of 3 sheds'], ['History preserved', rows.filter((r) => r.endDate).length, 'Past assignments']];
+  else if (def.key === 'sheds') items = [['Total hens', num(sum(rows, 'hens')), 'All farm sheds'], ['Eggs today', num(sum(todayRows(state.eggs), 'totalEggs')), 'All farm sheds'], ['Feed used today', `${num(sum(todayRows(state.feedUsage), 'quantity'))} kg`, 'Daily shed usage'], ['Mortality today', num(sum(todayRows(state.mortality), 'count')), 'Across all sheds']];
+  else if (def.key === 'assignments') items = [['Current assignments', rows.filter((r) => !r.endDate).length, 'Active historical links'], ['Workers assigned', new Set(rows.filter((r) => !r.endDate).map((r) => r.worker)).size, 'Unique workers'], ['Sheds covered', new Set(rows.filter((r) => !r.endDate).map((r) => r.shed)).size, 'All farm sheds'], ['History preserved', rows.filter((r) => r.endDate).length, 'Past assignments']];
   else if (def.key === 'dailyWages') items = [['Recorded this month', money(sum(currentMonthRows(rows), 'wage')), 'Daily wage work'], ['Pending payment', money(sum(rows.filter((r) => r.paymentStatus !== 'Paid'), 'wage')), 'Unpaid / partial'], ['Wage records', rows.length, 'All entries'], ['Paid records', rows.filter((r) => r.paymentStatus === 'Paid').length, 'Complete']];
   return `<div class="summary-grid">${items.map(([label, value, noteText]) => `<div class="summary-tile"><div class="summary-label">${esc(label)}</div><div class="summary-value">${value}</div><div class="summary-note">${esc(noteText)}</div></div>`).join('')}</div>`;
 }
@@ -428,7 +428,7 @@ function payrollDue() {
   return { amount, workersDue };
 }
 function highestExpenseShed() {
-  const totals = shedOptions.map((shed) => [shed, sum(currentMonthRows(state.expenses).filter((row) => row.shed === shed), 'amount')]).sort((a, b) => b[1] - a[1]);
+  const totals = shedOptions().map((shed) => [shed, sum(currentMonthRows(state.expenses).filter((row) => row.shed === shed), 'amount')]).sort((a, b) => b[1] - a[1]);
   return totals[0] ? `${totals[0][0]} · ${money(totals[0][1])}` : '—';
 }
 function filterRows(def, rows) {
@@ -456,7 +456,7 @@ function renderTable(def, rows) {
   const dateField = recordDateField(def);
   const dateLabel = def.columns.find((column) => column.key === dateField)?.label;
   const dateControls = dateField ? `<div class="date-filters" role="group" aria-label="Filter by ${esc(dateLabel)}"><label class="date-filter">From date<input id="dateFrom" type="date" value="${esc(ui.dateFrom)}" ${ui.dateTo ? `max="${esc(ui.dateTo)}"` : ''}></label><label class="date-filter">To date<input id="dateTo" type="date" value="${esc(ui.dateTo)}" ${ui.dateFrom ? `min="${esc(ui.dateFrom)}"` : ''}></label>${ui.dateFrom || ui.dateTo ? '<button class="btn btn-small" data-action="clear-dates">Clear dates</button>' : ''}<span class="date-filter-hint">${esc(dateLabel)}${ui.dateFrom || ui.dateTo ? '' : ' - All dates'}</span></div>` : '';
-  const actions = (row) => `<div class="row-actions"><button class="table-action" data-action="view-row" data-id="${esc(row.id)}" title="View details" aria-label="View details">${icon('eye', 13)}</button><button class="table-action" data-action="edit-row" data-id="${esc(row.id)}" title="Edit" aria-label="Edit">${icon('edit', 13)}</button>${def.key === 'workers' ? `<button class="table-action" data-action="worker-attendance" data-id="${esc(row.id)}" title="Attendance">${icon('calendar', 13)}</button><button class="table-action" data-action="worker-payment" data-id="${esc(row.id)}" title="Payments">${icon('wallet', 13)}</button>` : ''}${['sheds','assignments'].includes(def.key) ? '' : `<button class="table-action danger" data-action="delete-row" data-id="${esc(row.id)}" title="Delete" aria-label="Delete">${icon('trash', 13)}</button>`}</div>`;
+  const actions = (row) => `<div class="row-actions"><button class="table-action" data-action="view-row" data-id="${esc(row.id)}" title="View details" aria-label="View details">${icon('eye', 13)}</button><button class="table-action" data-action="edit-row" data-id="${esc(row.id)}" title="Edit" aria-label="Edit">${icon('edit', 13)}</button>${def.key === 'workers' ? `<button class="table-action" data-action="worker-attendance" data-id="${esc(row.id)}" title="Attendance">${icon('calendar', 13)}</button><button class="table-action" data-action="worker-payment" data-id="${esc(row.id)}" title="Payments">${icon('wallet', 13)}</button>` : ''}${['assignments'].includes(def.key) ? '' : `<button class="table-action danger" data-action="delete-row" data-id="${esc(row.id)}" title="Delete" aria-label="Delete">${icon('trash', 13)}</button>`}</div>`;
   return `<div class="module-toolbar"><label class="search-box">${icon('search', 14)}<input id="moduleSearch" type="search" placeholder="Search ${esc(def.title.toLowerCase())}…" value="${esc(ui.search)}" aria-label="Search ${esc(def.title)}"></label>${filterOptions.length ? `<select class="filter-select" id="moduleFilter" aria-label="Filter by ${esc(def.filterField)}"><option value="all">${esc(def.filterLabel || 'All')}</option>${filterOptions.map((option) => `<option value="${esc(option)}" ${ui.filter === option ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>` : ''}${dateControls}<div class="results-label">${filtered.length} record${filtered.length === 1 ? '' : 's'}</div></div>
     <div class="module-card"><div class="table-wrap"><table class="data-table"><thead><tr>${def.columns.map((column) => `<th><span class="th-sort" data-action="sort" data-key="${esc(column.key)}">${esc(column.label)}${ui.sort === column.key ? (ui.direction > 0 ? ' ↑' : ' ↓') : ''}</span></th>`).join('')}<th>Actions</th></tr></thead><tbody>${pageRows.length ? pageRows.map((row) => `<tr>${def.columns.map((column) => `<td>${formatCell(column, row)}</td>`).join('')}<td>${actions(row)}</td></tr>`).join('') : `<tr><td colspan="${def.columns.length + 1}" class="table-empty">No records match this search. Try a different filter or add a new record.</td></tr>`}</tbody></table></div><div class="pagination"><span>Showing ${filtered.length ? (ui.page - 1) * pageSize + 1 : 0}–${Math.min(ui.page * pageSize, filtered.length)} of ${filtered.length}</span><div class="page-actions"><button class="page-btn" data-action="page" data-step="-1" ${ui.page <= 1 ? 'disabled' : ''} aria-label="Previous page">‹</button><span class="page-btn" style="display:grid;place-items:center;color:var(--green)">${ui.page}</span><button class="page-btn" data-action="page" data-step="1" ${ui.page >= totalPages ? 'disabled' : ''} aria-label="Next page">›</button></div></div></div>`;
 }
@@ -533,7 +533,7 @@ function renderSettings() {
     ? `<div class="callout"><b>Signed in:</b> ${esc(ui.session.name || 'Farm user')}<br><b>Email:</b> ${esc(ui.session.email || '—')}<br><b>Role:</b> ${esc(ui.session.role || 'staff')}</div><button class="btn btn-quiet" data-action="sign-out">Sign out</button>`
     : `<div class="callout">Sign in to view and manage your farm records.</div><button class="btn btn-primary" data-action="sign-in">Sign in</button>`;
   const databaseStatus = ui.apiHealth?.database ? 'Connected · PostgreSQL database' : 'Not checked';
-  return `${connectionBanner()}${title}<div class="settings-grid"><section class="settings-card"><h3>Account access</h3><p>NestLedger uses its own email/password authentication. No third-party account is required.</p>${accessPanel}</section><section class="settings-card"><h3>Data connection</h3><p>Signed-in changes are stored in the shared PostgreSQL farm database.</p><div class="callout"><b>Current mode:</b> ${isRemoteConnected() ? 'Signed in · Shared PostgreSQL database' : 'Signed out - Sign in required'}<br><b>Data store:</b> ${databaseStatus}<br><b>API:</b> Same-origin Express API</div><div class="settings-actions"><button class="btn btn-quiet" data-action="check-api">Check connection</button></div></section><section class="settings-card"><h3>Farm profile</h3><p>These details appear across the dashboard and in the sidebar.</p><form id="settingsForm" class="settings-form"><div class="form-field"><label for="farmName">Farm name</label><input id="farmName" name="farmName" value="${esc(settings.farmName)}" required></div><div class="form-field"><label for="owner">Owner / administrator <span style="font-weight:normal;color:var(--muted)">(optional)</span></label><input id="owner" name="owner" value="${esc(settings.owner)}"></div><div class="form-field"><label for="phone">Contact phone</label><input id="phone" name="phone" value="${esc(settings.phone)}"></div><div class="form-field"><label for="address">Farm location</label><input id="address" name="address" value="${esc(settings.address)}"></div><div class="settings-actions"><button class="btn btn-primary" type="submit">Save settings</button></div></form></section><section class="settings-card"><h3>Farm structure</h3><p>This project is configured for exactly three sheds.</p><div class="callout">${state.sheds.map((shed) => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${esc(shed.name)}</span><b>${num(shed.hens)} hens</b></div>`).join('')}</div><div class="feature-note">Egg production, mortality, feed usage, workers, and expenses are associated with these sheds.</div></section></div>`;
+  return `${connectionBanner()}${title}<div class="settings-grid"><section class="settings-card"><h3>Account access</h3><p>NestLedger uses its own email/password authentication. No third-party account is required.</p>${accessPanel}</section><section class="settings-card"><h3>Data connection</h3><p>Signed-in changes are stored in the shared PostgreSQL farm database.</p><div class="callout"><b>Current mode:</b> ${isRemoteConnected() ? 'Signed in · Shared PostgreSQL database' : 'Signed out - Sign in required'}<br><b>Data store:</b> ${databaseStatus}<br><b>API:</b> Same-origin Express API</div><div class="settings-actions"><button class="btn btn-quiet" data-action="check-api">Check connection</button></div></section><section class="settings-card"><h3>Farm profile</h3><p>These details appear across the dashboard and in the sidebar.</p><form id="settingsForm" class="settings-form"><div class="form-field"><label for="farmName">Farm name</label><input id="farmName" name="farmName" value="${esc(settings.farmName)}" required></div><div class="form-field"><label for="owner">Owner / administrator <span style="font-weight:normal;color:var(--muted)">(optional)</span></label><input id="owner" name="owner" value="${esc(settings.owner)}"></div><div class="form-field"><label for="phone">Contact phone</label><input id="phone" name="phone" value="${esc(settings.phone)}"></div><div class="form-field"><label for="address">Farm location</label><input id="address" name="address" value="${esc(settings.address)}"></div><div class="settings-actions"><button class="btn btn-primary" type="submit">Save settings</button></div></form></section><section class="settings-card"><h3>Farm structure</h3><div class="settings-actions"><button class="btn btn-primary" data-action="add-shed">Add shed</button><button class="btn" data-action="navigate" data-view="sheds">Manage sheds</button></div><p>Add as many sheds as your farm needs. Rename sheds or update hen counts in Shed overview.</p><div class="callout">${state.sheds.map((shed) => `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${esc(shed.name)}</span><b>${num(shed.hens)} hens</b><button class="table-action danger" data-action="delete-shed" data-id="${shed.id}" aria-label="Delete shed">${icon('trash', 13)}</button></div>`).join('')}</div><div class="feature-note">Egg production, mortality, feed usage, workers, and expenses are associated with these sheds.</div></section></div>`;
 }
 
 function render() {
@@ -602,8 +602,7 @@ function validateRecord(form, def, body, existingId) {
   }
   if (def.key === 'eggs' && Number(body.goodEggs) + Number(body.brokenEggs) > Number(body.totalEggs)) { setFormError(form, 'general', 'Good eggs plus broken eggs cannot exceed the total eggs.'); valid = false; }
   if (def.key === 'attendance' && state.attendance.some((item) => String(item.id) !== String(existingId) && String(item.workerId) === String(body.workerId) && item.date === body.date)) { setFormError(form, 'general', 'Attendance already exists for this worker and date.'); valid = false; }
-  if (def.key === 'sheds' && !shedOptions.includes(body.name)) { setFormError(form, 'name', 'Keep exactly three sheds named Shed 1, Shed 2, and Shed 3.'); valid = false; }
-  if (def.key === 'sheds' && Number(body.id) < 1) valid = false;
+  if (def.key === 'sheds' && state.sheds.some((shed) => String(shed.id) !== String(existingId) && shed.name.toLowerCase() === String(body.name).trim().toLowerCase())) { setFormError(form, 'name', 'A shed with this name already exists.'); valid = false; }
   return valid;
 }
 function createRecordId(key) {
@@ -611,7 +610,6 @@ function createRecordId(key) {
   return `${prefixes[key] || 'ID'}-${Date.now().toString().slice(-7)}`;
 }
 async function openRecordForm(def, existing = null) {
-  if (def.key === 'sheds' && !existing) return showToast('The farm is configured for exactly three sheds. Edit an existing shed instead.', 'info');
   openModal({ title: existing ? `Edit ${def.singular}` : def.addLabel, subtitle: existing ? `Update details for ${existing.name || existing.id || def.singular}.` : `Required fields are marked with an asterisk.`, fields: def.fields, values: existing || {}, submitLabel: existing ? 'Save changes' : 'Save record', onSubmit: async (form) => {
     const raw = Object.fromEntries(new FormData(form).entries());
     const body = {};
@@ -673,6 +671,7 @@ async function openRecordForm(def, existing = null) {
         if (previousCopy.feedType !== saved.feedType) updateLocalStock(previousCopy.feedType, -Number(previousCopy.quantity));
         updateLocalStock(saved.feedType, Number(saved.quantity) - (previousCopy.feedType === saved.feedType ? Number(previousCopy.quantity) : 0));
       }
+      if (def.key === 'sheds') await refreshResources();
       persistLocal(state);
       showToast(`${titleCase(def.singular)} updated.`);
     } else {
@@ -704,7 +703,11 @@ function removeRecord(def, id) {
   const record = (state[def.key] || []).find((item) => String(item.id) === String(id));
   if (!record) return;
   const label = record.name || record.worker || record.id;
-  openModal({ title: `Delete ${def.singular}?`, subtitle: `Confirm removal of ${label}. This action cannot be undone.`, fields: [], values: {}, detail: true, onSubmit: null });
+  if (def.key === 'sheds') {
+    const linked = state.workers.some((row) => row.assignedShed === record.name) || ['assignments', 'dailyWages', 'feedUsage', 'eggs', 'mortality', 'expenses'].some((key) => state[key].some((row) => row.shed === record.name));
+    if (linked) { showToast('This shed has linked workers or farm records. Move or remove those records first.', 'error'); return; }
+  }
+  openModal({ title: `Delete ${def.singular}?`, subtitle: def.key === 'workers' ? `Remove ${label} from the worker list? Attendance and payment history will be retained.` : `Confirm removal of ${label}. This action cannot be undone.`, fields: [], values: {}, detail: true, onSubmit: null });
   const actions = $('.form-actions', $('#modal-root'));
   actions.innerHTML = `<button class="btn" type="button" data-action="close-modal">Cancel</button><button class="btn btn-danger" type="button" data-action="confirm-delete" data-id="${esc(id)}">Delete record</button>`;
   $('#modal-root').dataset.deleteModule = def.key;
@@ -713,21 +716,15 @@ async function confirmDelete(id) {
   const key = $('#modal-root').dataset.deleteModule;
   const def = modules[key];
   if (!def) return closeModal();
-  if (key === 'workers') {
-    await saveResource(def.endpoint, def.key, 'PUT', { status: 'Inactive' }, id);
-    const worker = state.workers.find((row) => String(row.id) === String(id));
-    if (worker) worker.status = 'Inactive';
-    persistLocal(state);
-    showToast('Worker marked inactive; attendance and assignment history are retained.', 'info');
-  } else {
     const deletedRow = state[key].find((row) => String(row.id) === String(id));
     await tryRemoteDelete(def.endpoint, id);
     if (key === 'feedUsage' && deletedRow) updateLocalStock(deletedRow.feedType, Number(deletedRow.quantity));
     if (key === 'feedPurchases' && deletedRow) updateLocalStock(deletedRow.feedType, -Number(deletedRow.quantity));
     state[key] = (state[key] || []).filter((row) => String(row.id) !== String(id));
     persistLocal(state);
-    showToast(`${titleCase(def.singular)} deleted.`);
-  }
+    if (key === 'sheds') { ui.filter = 'all'; ui.page = 1; }
+    if (key === 'workers') await refreshResources();
+    showToast(key === 'workers' ? 'Worker removed from the list. Attendance and payment history are retained.' : `${titleCase(def.singular)} deleted.`);
   closeModal(); render();
 }
 function openQuickEntry() {
@@ -798,6 +795,8 @@ app.addEventListener('click', async (event) => {
   if (action === 'clear-dates') { ui.dateFrom = ''; ui.dateTo = ''; ui.page = 1; render(); return; }
   if (action === 'range') { ui.range = Number(target.dataset.range); render(); return; }
   if (action === 'quick-entry') return openQuickEntry();
+  if (action === 'delete-shed') return removeRecord(modules.sheds, target.dataset.id);
+  if (action === 'add-shed') return openRecordForm(modules.sheds);
   if (action === 'new-row') return openRecordForm(modules[ui.view]);
   if (action === 'edit-shed') return openRecordForm(modules.sheds, state.sheds.find((row) => String(row.id) === target.dataset.id));
   if (action === 'close-modal') return closeModal();

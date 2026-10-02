@@ -76,7 +76,7 @@ function splitRecord(def, record) {
 
 export async function listRows(db, name) {
   const def = RESOURCES[name];
-  const { rows } = await db.query(`SELECT * FROM ${def.table} ORDER BY ${def.order || 'seq DESC'}`);
+  const { rows } = await db.query(`SELECT * FROM ${def.table}${name === 'workers' ? " WHERE extra->>'deleted' IS DISTINCT FROM 'true'" : ''} ORDER BY ${def.order || 'seq DESC'}`);
   return rows.map((row) => fromRow(def, row));
 }
 
@@ -149,4 +149,11 @@ export async function saveSettings(db, input) {
     [next.farmName, next.owner, next.phone, next.address, next.currency, next.timezone, next.feedCapacity],
   );
   return next;
+}
+
+// Remove a worker from current lists without breaking historical foreign keys.
+export async function archiveWorker(db, row) {
+  await db.query("UPDATE workers SET status = 'Inactive', extra = extra || '{\"deleted\":true}'::jsonb, updated_at = now() WHERE id = $1", [row.id]);
+  await db.query("UPDATE assignments SET end_date = CURRENT_DATE, updated_at = now() WHERE worker = $1 AND end_date IS NULL", [row.name]);
+  return { id: row.id, deleted: true };
 }

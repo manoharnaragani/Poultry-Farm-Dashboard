@@ -12,7 +12,7 @@ export const dateOffset = (offset) => {
 
 export function createEmptyData() {
   return {
-    sheds: [1, 2, 3].map((id) => ({ id, name: `Shed ${id}`, hens: 0, notes: '' })),
+    sheds: [],
     workers: [], attendance: [], payments: [], assignments: [], feedStock: [],
     feedUsage: [], feedPurchases: [], eggs: [], mortality: [], sales: [],
     expenses: [], dailyWages: [],

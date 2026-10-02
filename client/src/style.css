@@ -49,3 +49,5 @@ body{background:var(--bg)}.sidebar{background:var(--sidebar)}
 .btn-danger{background:var(--red-fill);border-color:var(--red-border);color:#FFFFFF}.btn-danger:hover{background:#A80D26;border-color:var(--red-fill);color:#FFFFFF}.table-action.danger{color:var(--red)}.table-action.danger:hover{background:var(--red-wash);color:var(--red)}.segment.active{background:var(--green-wash);color:var(--green)}
 .toast.error{background:var(--red-wash);border-color:var(--red-border);color:var(--red)}.toast.info{background:var(--neutral-wash);border-color:var(--line-strong);color:var(--text)}.toast.warning{border-color:var(--amber);color:var(--amber)}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+
+.shed-card:last-child{grid-column:auto}.shed-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.dashboard-tabs{width:100%;overflow-x:auto}.dashboard-tab{flex-shrink:0}

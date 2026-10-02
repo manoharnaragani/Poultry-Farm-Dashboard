@@ -1,7 +1,7 @@
 import { getAuthenticatedUser } from './localAuth.js';
 import { query, withTx } from './db/pool.js';
 import {
-  RESOURCES, ValidationError, makeId, listRows, getRow, insertRow, updateRow, deleteRow, adjustFeedStock, getSettings, saveSettings,
+  RESOURCES, ValidationError, archiveWorker, makeId, listRows, getRow, insertRow, updateRow, deleteRow, adjustFeedStock, getSettings, saveSettings,
 } from './db/repo.js';
 
 const resources = {
@@ -46,7 +46,7 @@ function normalizeRecord(path, body, existing = null) {
 }
 
 async function findWorker(db, value) {
-  const { rows } = await db.query('SELECT id, name FROM workers WHERE id = $1 OR name = $1 ORDER BY (id = $1) DESC LIMIT 1', [String(value ?? '')]);
+  const { rows } = await db.query("SELECT id, name FROM workers WHERE (id = $1 OR name = $1) AND extra->>'deleted' IS DISTINCT FROM 'true' ORDER BY (id = $1) DESC LIMIT 1", [String(value ?? '')]);
   return rows[0] || null;
 }
 
@@ -89,13 +89,21 @@ export function registerLocalFarmApi(app) {
 
     app.post(`/api${path}`, ah(async (req, res) => {
       try {
-        if (path === '/sheds') return fail(res, 'Shed records are managed by the farm setup.', 400);
         const created = await withTx(async (db) => {
           const body = req.body || {};
           const record = normalizeRecord(path, body);
           record.id = String(body.id || makeId(def.prefix));
+          if (path === '/sheds') {
+            await db.query('LOCK TABLE sheds IN EXCLUSIVE MODE');
+            record.name = String(record.name || '').trim();
+            if (!record.name || record.name.toLowerCase() === 'common') throw new ValidationError('Enter a shed name other than Common.');
+            const duplicate = await db.query('SELECT 1 FROM sheds WHERE lower(name) = lower($1)', [record.name]);
+            if (duplicate.rowCount) throw new ValidationError('A shed with this name already exists.');
+            const next = await db.query('SELECT COALESCE(MAX(id), 0) + 1 AS id FROM sheds');
+            record.id = next.rows[0].id;
+          }
           if (path === '/workers') {
-            record.assignedShed = record.assignedShed || 'Shed 1';
+            if (!record.assignedShed) throw new ValidationError('Please select a shed.');
             record.status = record.status || 'Active';
           }
           if (path === '/attendance' || path === '/worker-payments' || path === '/daily-wages') {
@@ -119,10 +127,23 @@ export function registerLocalFarmApi(app) {
     app.put(`/api${path}/:id`, ah(async (req, res) => {
       try {
         const updated = await withTx(async (db) => {
+          if (path === '/sheds') await db.query('LOCK TABLE sheds IN EXCLUSIVE MODE');
           const previous = await getRow(db, name, req.params.id, { lock: true });
           if (!previous) return null;
           const record = normalizeRecord(path, req.body || {}, previous);
           record.id = previous.id;
+          if (path === '/sheds') {
+            record.name = String(record.name || '').trim();
+            if (!record.name || record.name.toLowerCase() === 'common') throw new ValidationError('Enter a shed name other than Common.');
+            const duplicate = await db.query('SELECT 1 FROM sheds WHERE lower(name) = lower($1) AND id <> $2', [record.name, previous.id]);
+            if (duplicate.rowCount) throw new ValidationError('A shed with this name already exists.');
+            if (record.name !== previous.name) {
+              for (const table of ['assignments', 'daily_wages', 'feed_usage', 'eggs', 'mortality', 'expenses']) {
+                await db.query(`UPDATE ${table} SET shed = $1, updated_at = now() WHERE shed = $2`, [record.name, previous.name]);
+              }
+              await db.query('UPDATE workers SET assigned_shed = $1, updated_at = now() WHERE assigned_shed = $2', [record.name, previous.name]);
+            }
+          }
           if (path === '/attendance' || path === '/worker-payments' || path === '/daily-wages') {
             const worker = await findWorker(db, record.workerId || record.worker);
             if (!worker) throw new ValidationError('Please select a valid worker.');
@@ -146,17 +167,28 @@ export function registerLocalFarmApi(app) {
 
     app.delete(`/api${path}/:id`, ah(async (req, res) => {
       try {
-        if (path === '/sheds') return fail(res, 'Shed records are managed by the farm setup.', 400);
         const result = await withTx(async (db) => {
+          if (path === '/sheds') {
+            // Serialize deletion with writes to name-linked farm records.
+            await db.query('LOCK TABLE sheds, workers, assignments, daily_wages, feed_usage, eggs, mortality, expenses IN SHARE ROW EXCLUSIVE MODE');
+          }
           const row = await getRow(db, name, req.params.id, { lock: true });
           if (!row) return null;
+          if (path === '/sheds') {
+            const linked = await db.query(`SELECT EXISTS (
+              SELECT 1 FROM workers WHERE assigned_shed = $1
+              UNION ALL SELECT 1 FROM assignments WHERE shed = $1
+              UNION ALL SELECT 1 FROM daily_wages WHERE shed = $1
+              UNION ALL SELECT 1 FROM feed_usage WHERE shed = $1
+              UNION ALL SELECT 1 FROM eggs WHERE shed = $1
+              UNION ALL SELECT 1 FROM mortality WHERE shed = $1
+              UNION ALL SELECT 1 FROM expenses WHERE shed = $1
+            ) AS linked`, [row.name]);
+            if (linked.rows[0].linked) throw new ValidationError('This shed has linked workers or farm records. Reassign workers and remove or move linked records before deleting it.');
+          }
           if (path === '/feed/usage') await adjustFeedStock(db, row.feedType, number(row.quantity));
           if (path === '/feed/purchases') await adjustFeedStock(db, row.feedType, -number(row.quantity));
-          if (path === '/workers') {
-            // Workers are never erased: attendance and payment history stay intact.
-            await db.query("UPDATE workers SET status = 'Inactive', updated_at = now() WHERE id = $1", [row.id]);
-            return { id: row.id, status: 'Inactive' };
-          }
+          if (path === '/workers') return archiveWorker(db, row);
           await deleteRow(db, name, row.id);
           return { id: row.id };
         });
