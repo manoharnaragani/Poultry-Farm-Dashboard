@@ -1,4 +1,4 @@
-NestLedger - quick start
+Poultry Farm Management - quick start
 
 1. Install Node.js 22+ (nodejs.org) and pnpm:  npm install -g pnpm
 2. Get a free PostgreSQL database and put its connection string in a file named ".env"
@@ -6,7 +6,7 @@ NestLedger - quick start
 3. In VS Code open this folder, open a terminal and run:
        pnpm install
        pnpm dev
-4. Open http://localhost:3000  (login: admin@nestledger.local / Admin@123)
+4. Open http://localhost:3000  (login: admin@poultry-farm-management.local / Admin@123)
 
 Putting it online: DEPLOY.md
 Optional legacy data migration: SETUP-DATABASE.md ("Migrating legacy data")

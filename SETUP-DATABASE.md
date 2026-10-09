@@ -1,6 +1,6 @@
 # Set up the PostgreSQL database
 
-NestLedger stores all farm data in PostgreSQL. The tables are created automatically the first
+Poultry Farm Management stores all farm data in PostgreSQL. The tables are created automatically the first
 time the app starts, so you only need an empty database and its connection string.
 
 ## Step 1: Get a free PostgreSQL database (online)
@@ -31,12 +31,12 @@ pnpm dev
 ```
 
 (or `npm install` and `npm run dev`). Open http://localhost:3000, sign in with
-`admin@nestledger.local` / `Admin@123`, and the app is running on PostgreSQL.
+`admin@poultry-farm-management.local` / `Admin@123`, and the app is running on PostgreSQL.
 To use a different admin login, add `ADMIN_EMAIL` and `ADMIN_PASSWORD` to `.env`.
 
 ## Migrating legacy data (optional one-time import)
 
-Storage in NestLedger is PostgreSQL only. If you have legacy data from an older JSON export, you can import it once:
+Storage in Poultry Farm Management is PostgreSQL only. If you have legacy data from an older JSON export, you can import it once:
 
 ```bash
 node scripts/import-json.js path/to/data.json
@@ -61,10 +61,10 @@ node scripts/import-json.js path/to/data.json
 
 ## Optional: PostgreSQL on your own computer
 
-Install PostgreSQL from postgresql.org, create a database (e.g. `nestledger`), and use:
+Install PostgreSQL from postgresql.org, create a database (e.g. `poultry-farm-management`), and use:
 
 ```
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/nestledger
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/poultry-farm-management
 ```
 
 Data then lives only on that computer, so use an online database if you want to see it

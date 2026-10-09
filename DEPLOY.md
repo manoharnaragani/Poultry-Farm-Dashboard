@@ -1,4 +1,4 @@
-# Deploy NestLedger online (Render example)
+# Deploy Poultry Farm Management online (Render example)
 
 Your data lives in PostgreSQL, so the web host needs **no persistent disk**, and redeploying
 never touches your data. Do Steps 1 and 2 of SETUP-DATABASE.md first (get a database and its connection string).
@@ -53,11 +53,11 @@ The Blueprint selects the free web service plan. See https://render.com/docs/fre
 This site uses server-side Google OpenID Connect with PKCE, one-use state, a nonce, and signed ID-token verification. Google tokens never go to browser storage. App sessions use HttpOnly cookies, Secure in production, and only hashed session tokens are stored in PostgreSQL.
 
 1. In Google Cloud / Google Auth Platform, configure branding and audience, then create an OAuth client with application type **Web application**. Request only `openid`, `email`, and `profile`.
-2. For the current live site, register this exact authorized redirect URI:
-   `https://nestledger-b41v.onrender.com/api/auth/google/callback`
+2. Replace `YOUR-SERVICE` with your existing Render service hostname and register this authorized redirect URI:
+   `https://YOUR-SERVICE.onrender.com/api/auth/google/callback`
    For local development, optionally add `http://localhost:3000/api/auth/google/callback`.
 3. Add these in **Render > Environment**:
-   - `APP_URL=https://nestledger-b41v.onrender.com`
+   - `APP_URL=https://YOUR-SERVICE.onrender.com`
    - `GOOGLE_CLIENT_ID=<web application client ID>`
    - `GOOGLE_CLIENT_SECRET=<client secret>`
    - `ALLOW_REGISTRATION=true` if new users should be able to sign up. The existing default is false. Registration creates staff accounts with access to this shared farm, not separate private farms.

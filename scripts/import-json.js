@@ -1,5 +1,5 @@
-// One-time import of an old NestLedger data file (data/nestledger.json) into PostgreSQL.
-// Usage:  node scripts/import-json.js path/to/nestledger.json
+// One-time import of an old Poultry Farm Management data file (data/poultry-farm-management.json) into PostgreSQL.
+// Usage:  node scripts/import-json.js path/to/poultry-farm-management.json
 // Safe to run again: records are matched by ID and updated instead of duplicated.
 // Sheds, feed stock and farm settings are REPLACED by the file's values.
 import 'dotenv/config';
@@ -10,7 +10,7 @@ import { insertRow, saveSettings, makeId } from '../server/db/repo.js';
 
 const file = process.argv[2];
 if (!file || !fs.existsSync(file)) {
-  console.log('Usage: node scripts/import-json.js path/to/nestledger.json');
+  console.log('Usage: node scripts/import-json.js path/to/poultry-farm-management.json');
   process.exit(1);
 }
 const data = JSON.parse(fs.readFileSync(file, 'utf8'));

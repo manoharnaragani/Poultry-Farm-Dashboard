@@ -53,10 +53,10 @@ else await setupVite(app, server);
 
 const port = isProduction ? Number(process.env.PORT || 3000) : await findPort();
 server.listen(port, HOST, () => {
-  console.log(`NestLedger running at http://localhost:${port}/`);
+  console.log(`Poultry Farm Management running at http://localhost:${port}/`);
   console.log(`Mode: ${isProduction ? 'production' : 'development'}`);
   console.log('Database: PostgreSQL connected');
-  if (!isProduction && !process.env.ADMIN_PASSWORD) console.log('Local admin: admin@nestledger.local / Admin@123 (change by setting ADMIN_PASSWORD in .env)');
+  if (!isProduction && !process.env.ADMIN_PASSWORD) console.log('Local admin: admin@poultry-farm-management.local / Admin@123 (change by setting ADMIN_PASSWORD in .env)');
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

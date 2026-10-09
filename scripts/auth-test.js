@@ -49,10 +49,10 @@ try {
  const check = (label,condition) => {assert.ok(condition,label); count++; console.log('PASS '+label);};
  const signupEmail = `${prefix}@example.test`, password='Long-password-123!';
  let result = await call('/api/auth/register','POST',{name:'Test User',email:signupEmail,password});
- check('signup creates session',result.status===201 && jar.has('nestledger_session'));
+ check('signup creates session',result.status===201 && jar.has('poultry_farm_management_session'));
  check('HttpOnly SameSite cookie',result.headers.get('set-cookie').includes('HttpOnly; SameSite=Lax'));
  const user = (await result.json()).data;
- const original = jar.get('nestledger_session');
+ const original = jar.get('poultry_farm_management_session');
  const stored = (await db.query('SELECT token_hash FROM sessions WHERE user_id=$1',[user.id])).rows[0].token_hash;
  check('database stores only session hash',stored===hashToken(original) && stored!==original);
  check('session authenticates',(await (await call('/api/session')).json()).data.id===user.id);
@@ -69,7 +69,7 @@ try {
  check('malformed cookie does not crash',parseCookies('broken=%E0%A4%A').broken===undefined);
  check('malformed stored hash does not crash',await verifyPassword(password,'bad:bad')===false);
  result=await call('/api/auth/login','POST',{email:signupEmail,password});
- check('login rotates session',result.status===200 && jar.get('nestledger_session')!==original);
+ check('login rotates session',result.status===200 && jar.get('poultry_farm_management_session')!==original);
  check('old session revoked',(await db.query('SELECT 1 FROM sessions WHERE token_hash=$1',[hashToken(original)])).rowCount===0);
  await call('/api/logout','POST');
  check('logout revokes session',(await (await call('/api/session')).json()).data===null);
@@ -119,18 +119,18 @@ try {
  // Verify password updates and session revocation using a separate test account.
  const profileEmail = `profile-${signupEmail}`;
  await call('/api/auth/register','POST',{name:'Profile Tester',email:profileEmail,password});
- const profileToken=jar.get('nestledger_session');
+ const profileToken=jar.get('poultry_farm_management_session');
  check('email update requires password',(await call('/api/auth/profile','PUT',{name:'Profile Tester',email:`changed-${profileEmail}`})).status===401);
  const nextPassword='Updated-password-456!';
  result=await call('/api/auth/profile','PUT',{name:'Profile Tester',email:profileEmail,currentPassword:password,newPassword:nextPassword});
- check('password update rotates session',result.status===200 && jar.get('nestledger_session')!==profileToken);
+ check('password update rotates session',result.status===200 && jar.get('poultry_farm_management_session')!==profileToken);
  check('password update revokes old session',(await db.query('SELECT 1 FROM sessions WHERE token_hash=$1',[hashToken(profileToken)])).rowCount===0);
  await call('/api/logout','POST');
  check('old password rejected after update',(await call('/api/auth/login','POST',{email:profileEmail,password})).status===401);
  check('new password works',(await call('/api/auth/login','POST',{email:profileEmail,password:nextPassword})).status===200);
  await call('/api/auth/login','POST',{email:signupEmail,password});
  const second = express(); second.use(express.json());
- registerAuthRoutes(second,{query:db.query.bind(db),withTx:async fn=>fn(db),production:true,origin:'https://nestledger-b41v.onrender.com',allowRegistration:false});
+ registerAuthRoutes(second,{query:db.query.bind(db),withTx:async fn=>fn(db),production:true,origin:'https://poultry-farm-management-b41v.onrender.com',allowRegistration:false});
  const disabled=second.listen(0,'127.0.0.1'); await once(disabled,'listening');
  try {
    const address=`http://127.0.0.1:${disabled.address().port}`;

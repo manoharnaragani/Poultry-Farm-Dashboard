@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nestledger
+    name: poultry-farm-management
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && npm run build

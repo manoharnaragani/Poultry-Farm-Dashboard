@@ -3,7 +3,7 @@ import { createEmptyData } from './data.js';
 const clone = (value) => JSON.parse(JSON.stringify(value));
 // Remove legacy browser sample records on every load; they are never read again.
 export function clearDemoStorage() {
-  try { localStorage.removeItem('nestledger.demo.v1'); } catch {}
+  try { localStorage.removeItem('poultry-farm-management.demo.v1'); } catch {}
 }
 clearDemoStorage();
 const cache = createEmptyData();
@@ -24,7 +24,7 @@ export function persistLocal(next) {
   Object.assign(cache, snapshot);
 }
 
-export const apiRoot = () => (window.FARM_API_URL || localStorage.getItem('nestledger.apiUrl') || '').replace(/\/$/, '');
+export const apiRoot = () => (window.FARM_API_URL || localStorage.getItem('poultry-farm-management.apiUrl') || '').replace(/\/$/, '');
 function apiHeaders() {
   const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
 

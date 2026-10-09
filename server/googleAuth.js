@@ -35,19 +35,19 @@ export function registerGoogleRoutes(app, options) {
       const verifier = crypto.randomBytes(32).toString('base64url');
       await query('DELETE FROM oauth_states WHERE expires_at < now()');
       await query('INSERT INTO oauth_states (state_hash,binding_hash,nonce,verifier,user_id,expires_at) VALUES ($1,$2,$3,$4,$5,$6)',[hashToken(state),hashToken(binding),nonce,verifier,user?.id || null,new Date(Date.now()+600000)]);
-      cookie(res,'nestledger_oauth',binding,production,600,'/api/auth/google');
+      cookie(res,'poultry_farm_management_oauth',binding,production,600,'/api/auth/google');
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       url.search = new URLSearchParams({client_id:clientId,redirect_uri:callback,response_type:'code',scope:'openid email profile',state,nonce,code_challenge:crypto.createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256',prompt:'select_account'}).toString();
       res.redirect(302,url.toString());
     } catch(error) { next(error); }
   });
   app.get('/api/auth/google/callback',async(req,res) => {
-    cookie(res,'nestledger_oauth','',production,0,'/api/auth/google');
+    cookie(res,'poultry_farm_management_oauth','',production,0,'/api/auth/google');
     res.set('Referrer-Policy','no-referrer');
     try {
       if (!enabled) return errorRedirect(res,'google_unavailable');
       const state = typeof req.query.state === 'string' ? req.query.state : '';
-      const binding = parseCookies(req.headers.cookie).nestledger_oauth;
+      const binding = parseCookies(req.headers.cookie).poultry_farm_management_oauth;
       if (!state || state.length > 256 || !binding) return errorRedirect(res,'google_expired');
       // Delete atomically: state cannot be replayed, even on multiple app instances.
       const {rows} = await query('DELETE FROM oauth_states WHERE state_hash=$1 AND binding_hash=$2 AND expires_at > now() RETURNING *',[hashToken(state),hashToken(binding)]);

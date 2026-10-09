@@ -1,6 +1,6 @@
-# NestLedger — Independent Poultry Farm Management System
+# Poultry Farm Management — Independent Poultry Farm Management System
 
-NestLedger is a student-friendly full-stack poultry farm management project.
+Poultry Farm Management is a student-friendly full-stack poultry farm management project.
 It uses its own email/password login and stores all data in PostgreSQL, so the same records are visible from any device once deployed.
 
 ## Stack
@@ -26,7 +26,7 @@ It uses its own email/password login and stores all data in PostgreSQL, so the s
 - Empty dashboard when signed out; sign in to access farm records
 
 ## Admin account
-For development, the default administrator is `admin@nestledger.local` / `Admin@123`. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` to change it (required when deployed online).
+For development, the default administrator is `admin@poultry-farm-management.local` / `Admin@123`. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` to change it (required when deployed online).
 
 ## Run in VS Code
 1. Get a PostgreSQL database and create `.env` (see `SETUP-DATABASE.md`).

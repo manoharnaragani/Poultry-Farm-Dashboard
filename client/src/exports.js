@@ -50,7 +50,7 @@ export function reportColumns(rows, modules, keys) {
   return [...columns].map(([key,label])=>({key,label}));
 }
 export function downloadCsv(csv, name) {
-  const safeName=name.toLowerCase().replace(/[^a-z0-9_-]+/g,'-').slice(0,180) || 'nestledger-export';
+  const safeName=name.toLowerCase().replace(/[^a-z0-9_-]+/g,'-').slice(0,180) || 'poultry-farm-management-export';
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const link=document.createElement('a'); link.href=url; link.download=safeName+'.csv';
   document.body.appendChild(link); link.click(); link.remove();

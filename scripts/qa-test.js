@@ -5,7 +5,7 @@ const connectionUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 
 export async function runQaTests(baseUrl = 'http://127.0.0.1:3000') {
   console.log(`\n========================================`);
-  console.log(`   NESTLEDGER FULL QA TEST SUITE`);
+  console.log(`   POULTRY FARM MANAGEMENT FULL QA TEST SUITE`);
   console.log(`========================================`);
   console.log(`Target: ${baseUrl}`);
   console.log(`Database Mode: ${process.env.TEST_DATABASE_URL ? 'Dedicated TEST Database' : 'Configured Database (TEST prefix isolation)'}`);
@@ -43,7 +43,7 @@ export async function runQaTests(baseUrl = 'http://127.0.0.1:3000') {
     });
     const setCookie = res.headers.get('set-cookie');
     if (setCookie) {
-      const match = setCookie.match(/nestledger_session=[^;]+/);
+      const match = setCookie.match(/poultry_farm_management_session=[^;]+/);
       if (match) sessionCookie = match[0];
     }
     const contentType = res.headers.get('content-type') || '';
@@ -58,7 +58,7 @@ export async function runQaTests(baseUrl = 'http://127.0.0.1:3000') {
 
     // 2. Authentication: login with default admin credentials
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@nestledger.local';
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@poultry-farm-management.local';
     const login = await api('/auth/login', 'POST', { email: adminEmail, password: adminPassword });
     report('Admin Authentication', login.ok && login.data?.success === true, `User: ${login.data?.data?.email}`);
 

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { query, withTx } from './db/pool.js';
 import { hashPassword, verifyPassword, hashToken, parseCookies, validEmail, validPassword, validName, cookie, sameOrigin } from './authSecurity.js';
 import { registerGoogleRoutes } from './googleAuth.js';
-const SESSION_COOKIE = 'nestledger_session';
+const SESSION_COOKIE = 'poultry_farm_management_session';
 const isProd = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
 const publicUser = (user) => user ? { id: user.id, name: user.name, email: user.email, role: user.role, googleLinked: Boolean(user.google_sub), hasPassword: Boolean(user.password_hash) } : null;
 const fail = (res, status, message) => res.status(status).json({success:false,message});
@@ -16,7 +16,7 @@ export async function createSession(db, userId, previousToken) {
 }
 // Reuse existing administrator accounts and reject staff-email conflicts clearly.
 export async function initializeAdmin(db, { email, password = '', name = 'Farm Admin', production = false, explicitEmail = true }) {
-  const adminEmail = String(email || 'admin@nestledger.local').trim().toLowerCase();
+  const adminEmail = String(email || 'admin@poultry-farm-management.local').trim().toLowerCase();
   // Serialize startup on multiple application instances.
   await db.query('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE');
   const { rows } = await db.query("SELECT * FROM users WHERE id = 'USR-ADMIN' OR lower(email) = $1 FOR UPDATE", [adminEmail]);

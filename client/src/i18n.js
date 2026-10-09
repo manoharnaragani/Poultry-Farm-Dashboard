@@ -67,7 +67,7 @@ const telugu = {
   'Farm name': 'ఫారం పేరు', 'Owner / administrator': 'యజమాని / నిర్వాహకుడు', 'Contact phone': 'సంప్రదింపు ఫోన్', 'Farm location': 'ఫారం ప్రాంతం',
   'Save settings': 'సెట్టింగ్‌లను సేవ్ చేయండి', 'Check connection': 'కనెక్షన్ తనిఖీ చేయండి', 'Current mode:': 'ప్రస్తుత విధానం:', 'Data store:': 'డేటా నిల్వ:',
   'Email': 'ఇమెయిల్', 'Password': 'పాస్‌వర్డ్', 'Create account': 'ఖాతా సృష్టించండి', 'Back to sign in': 'సైన్ ఇన్‌కు తిరిగి వెళ్లండి',
-  'Sign in to NestLedger': 'NestLedgerలో సైన్ ఇన్ చేయండి', 'Create your farm account': 'మీ ఫారం ఖాతాను సృష్టించండి',
+  'Sign in to Poultry Farm Management': 'Poultry Farm Managementలో సైన్ ఇన్ చేయండి', 'Create your farm account': 'మీ ఫారం ఖాతాను సృష్టించండి',
   'Not signed in': 'సైన్ ఇన్ చేయలేదు', 'Current password': 'ప్రస్తుత పాస్‌వర్డ్', 'New password': 'కొత్త పాస్‌వర్డ్', 'Confirm password': 'పాస్‌వర్డ్ నిర్ధారించండి',
   'Production history': 'ఉత్పత్తి చరిత్ర', 'Feed history': 'దాణా చరిత్ర', 'Expense history': 'ఖర్చుల చరిత్ర', 'Mortality history': 'మరణాల చరిత్ర',
   'Monthly shed activity': 'నెలవారీ షెడ్ కార్యకలాపాలు', 'Current month totals': 'ప్రస్తుత నెల మొత్తాలు', 'Assigned workers': 'కేటాయించిన కార్మికులు',
@@ -82,11 +82,11 @@ const telugu = {
 };
 
 let language = 'en';
-try { language = localStorage.getItem('nestledger.language') === 'te' ? 'te' : 'en'; } catch {}
+try { language = localStorage.getItem('poultry-farm-management.language') === 'te' ? 'te' : 'en'; } catch {}
 export const getLanguage = () => language;
 export function setLanguage(value) {
   language = value === 'te' ? 'te' : 'en';
-  try { localStorage.setItem('nestledger.language', language); } catch {}
+  try { localStorage.setItem('poultry-farm-management.language', language); } catch {}
   document.documentElement.lang = language;
 }
 export function translate(text) {
